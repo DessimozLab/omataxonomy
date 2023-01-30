@@ -84,7 +84,7 @@ class Taxonomy:
         self.db = sqlite3.connect(self.dbfile)
 
     def _translate_merged(self, all_taxids):
-        conv_all_taxids = set((list(map(int, all_taxids))))
+        conv_all_taxids = set(map(int, all_taxids))
         cmd = 'select taxid_old, taxid_new FROM merged WHERE taxid_old IN (%s)' % ','.join(map(str, all_taxids))
 
         result = self.db.execute(cmd)
@@ -259,45 +259,39 @@ class Taxonomy:
         elif found == 1:
             return [taxid]
         if rank_limit or collapse_subspecies or return_tree:
-            descendants_spnames = self.get_taxid_translator(list(descendants.keys()))
-            # tree = self.get_topology(list(descendants.keys()), intermediate_nodes=intermediate_nodes, collapse_subspecies=collapse_subspecies, rank_limit=rank_limit)
-            tree = self.get_topology(list(descendants_spnames.values()), intermediate_nodes=intermediate_nodes,
+            tree = self.get_topology(list(descendants.keys()), intermediate_nodes=intermediate_nodes,
                                      collapse_subspecies=collapse_subspecies, rank_limit=rank_limit)
             if return_tree:
                 return tree
             elif intermediate_nodes:
-                return [n.name for n in tree.get_descendants()]
+                return list(map(int, [n.name for n in tree.get_descendants()]))
             else:
-                return [n.name for n in tree]
+                return map(int, [n.name for n in tree])
 
         elif intermediate_nodes:
-            return self.translate_to_names([tid for tid, count in descendants.items()])
+            return [tid for tid, count in descendants.items()]
         else:
-            self.translate_to_names([tid for tid, count in descendants.items() if count == 1])
-            return self.translate_to_names([tid for tid, count in descendants.items() if count == 1])
+            return [tid for tid, count in descendants.items() if count == 1]
 
-    def get_topology(self, taxnames, intermediate_nodes=False, rank_limit=None, collapse_subspecies=False,
-                     annotate=True):
+    def get_topology(self, taxids, intermediate_nodes=False, rank_limit=None, collapse_subspecies=False, annotate=True):
         """Given a list of taxid numbers, return the minimal pruned GTDB taxonomy tree
         containing all of them.
+
         :param False intermediate_nodes: If True, single child nodes
             representing the complete lineage of leaf nodes are kept.
             Otherwise, the tree is pruned to contain the first common
             ancestor of each group.
+
         :param None rank_limit: If valid NCBI rank name is provided,
             the tree is pruned at that given level. For instance, use
             rank="species" to get rid of sub-species or strain leaf
             nodes.
+
         :param False collapse_subspecies: If True, any item under the
             species rank will be collapsed into the species upper
             node.
         """
-        from ete4 import PhyloTree
-        # taxids, merged_conversion = self._translate_merged(taxids)
-        tax2id = self.get_name_translator(
-            taxnames)  # {'f__Korarchaeaceae': [2174], 'o__Peptococcales': [205487], 'p__Huberarchaeota': [610]}
-        taxids = [i[0] for i in tax2id.values()]
-
+        taxids, merged_conversion = self._translate_merged(taxids)
         if len(taxids) == 1:
             root_taxid = int(list(taxids)[0])
             with open(self.dbfile + ".traverse.pkl", "rb") as CACHED_TRAVERSE:
@@ -315,16 +309,14 @@ class Taxonomy:
                 # If root taxid is not found in postorder, must be a tip node
                 subtree = [root_taxid]
             leaves = set([v for v, count in Counter(subtree).items() if count == 1])
-            tax2name = self.get_taxid_translator(list(subtree))
-            name2tax = {spname: taxid for taxid, spname in tax2name.items()}
-            nodes[root_taxid] = PhyloTree(name=root_taxid)
+            nodes[root_taxid] = PhyloTree(name=str(root_taxid))
             current_parent = nodes[root_taxid]
             for tid in subtree:
                 if tid in visited:
                     current_parent = nodes[tid].up
                 else:
                     visited.add(tid)
-                    nodes[tid] = PhyloTree(name=tax2name.get(tid, ''))
+                    nodes[tid] = PhyloTree(name=str(tid))
                     current_parent.add_child(nodes[tid])
                     if tid not in leaves:
                         current_parent = nodes[tid]
@@ -338,23 +330,15 @@ class Taxonomy:
             for lineage in id2lineage.values():
                 all_taxids.update(lineage)
             id2rank = self.get_rank(all_taxids)
-
-            tax2name = self.get_taxid_translator(taxids)
-            all_taxid_codes = set([_tax for _lin in list(id2lineage.values()) for _tax in _lin])
-            extra_tax2name = self.get_taxid_translator(list(all_taxid_codes - set(tax2name.keys())))
-            tax2name.update(extra_tax2name)
-            name2tax = {spname: taxid for taxid, spname in tax2name.items()}
-
             for sp in taxids:
                 track = []
                 lineage = id2lineage[sp]
 
                 for elem in lineage:
-                    spanme = tax2name[elem]
                     if elem not in elem2node:
                         node = elem2node.setdefault(elem, PhyloTree())
-                        node.name = str(tax2name[elem])
-                        node.taxid = str(tax2name[elem])
+                        node.name = str(elem)
+                        node.taxid = elem
                         node.add_prop("rank", str(id2rank.get(int(elem), "no rank")))
                     else:
                         node = elem2node[elem]
@@ -370,11 +354,11 @@ class Taxonomy:
                         break
                     parent = elem
             root = elem2node[1]
-        # remove onechild-nodes
 
+        # remove onechild-nodes
         if not intermediate_nodes:
             for n in root.get_descendants():
-                if len(n.children) == 1 and int(name2tax.get(n.name, n.name)) not in taxids:
+                if len(n.children) == 1 and int(n.name) not in taxids:
                     n.delete(prevent_nondicotomic=False)
 
         if len(root.children) == 1:
@@ -408,24 +392,13 @@ class Taxonomy:
         """
 
         taxids = set()
-        if taxid_attr == "taxid":
-            for n in t.traverse():
-                try:
-                    tid = int(getattr(n, taxid_attr))
-                except (ValueError, AttributeError):
-                    pass
-                else:
-                    taxids.add(tid)
-        else:
-            for n in t.traverse():
-                try:
-                    # taxaname = getattr(n, taxid_attr) #
-                    taxaname = n.props.get(taxid_attr)
-                    tid = self.get_name_translator([taxaname])[taxaname][0]  # translate gtdb name -> id
-                except (KeyError, ValueError, AttributeError):
-                    pass
-                else:
-                    taxids.add(tid)
+        for n in t.traverse():
+            try:
+                tid = int(getattr(n, taxid_attr))
+            except (ValueError,AttributeError):
+                pass
+            else:
+                taxids.add(tid)
         merged_conversion = {}
 
         taxids, merged_conversion = self._translate_merged(taxids)
@@ -438,34 +411,28 @@ class Taxonomy:
         all_taxid_codes = set([_tax for _lin in list(tax2track.values()) for _tax in _lin])
         extra_tax2name = self.get_taxid_translator(list(all_taxid_codes - set(tax2name.keys())))
         tax2name.update(extra_tax2name)
-
         tax2common_name = self.get_common_names(tax2name.keys())
 
         if not tax2rank:
             tax2rank = self.get_rank(list(tax2name.keys()))
 
-        name2tax = {spname: taxid for taxid, spname in tax2name.items()}
         n2leaves = t.get_cached_content()
 
         for n in t.traverse('postorder'):
             try:
-                # node_taxid = int(getattr(n, taxid_attr))
-                node_taxid = n.props.get(taxid_attr)
+                node_taxid = int(getattr(n, taxid_attr))
             except (ValueError, AttributeError):
                 node_taxid = None
 
             n.add_prop('taxid', node_taxid)
             if node_taxid:
-                tmp_taxid = self.get_name_translator([node_taxid]).get(node_taxid, [None])[0]
-                # tmp_taxid = self.get_name_translator([node_taxid])[node_taxid][0] # translate to temperatoru
                 if node_taxid in merged_conversion:
                     node_taxid = merged_conversion[node_taxid]
-
                 n.add_props(sci_name=tax2name.get(node_taxid, getattr(n, taxid_attr, '')),
                             common_name=tax2common_name.get(node_taxid, ''),
-                            lineage=tax2track.get(tmp_taxid, []),
-                            rank=tax2rank.get(tmp_taxid, 'Unknown'),
-                            named_lineage=[tax2name.get(tax, str(tax)) for tax in tax2track.get(tmp_taxid, [])])
+                            lineage=tax2track.get(node_taxid, []),
+                            rank=tax2rank.get(node_taxid, 'Unknown'),
+                            named_lineage=[tax2name.get(tax, str(tax)) for tax in tax2track.get(node_taxid, [])])
             elif n.is_leaf():
                 n.add_props(sci_name=getattr(n, taxid_attr, 'NA'),
                             common_name='',
@@ -474,16 +441,12 @@ class Taxonomy:
                             named_lineage=[])
             else:
                 lineage = self._common_lineage([lf.props.get('lineage') for lf in n2leaves[n]])
-                if lineage[-1]:
-                    ancestor = self.get_taxid_translator([lineage[-1]])[lineage[-1]]
-                else:
-                    ancestor = None
-                # print([tax2name.get(tax, str(tax)) for tax in lineage])
+                ancestor = lineage[-1]
                 n.add_props(sci_name=tax2name.get(ancestor, str(ancestor)),
-                            common_name=tax2common_name.get(lineage[-1], ''),
+                            common_name=tax2common_name.get(ancestor, ''),
                             taxid=ancestor,
                             lineage=lineage,
-                            rank=tax2rank.get(lineage[-1], 'Unknown'),
+                            rank=tax2rank.get(ancestor, 'Unknown'),
                             named_lineage=[tax2name.get(tax, str(tax)) for tax in lineage])
 
         return tax2name, tax2track, tax2rank
@@ -771,23 +734,29 @@ def upload_data(dbfile):
 
 if __name__ == "__main__":
     # from .. import PhyloTree
-    gtdb = Taxonomy()
-    #gtdb.update_taxonomy_database(DEFAULT_DUMP)
+    tax = Taxonomy()
+    #tax.update_taxonomy_database(DEFAULT_DUMP)
 
-    descendants = gtdb.get_descendant_taxa('c__Thorarchaeia', collapse_subspecies=True, return_tree=True)
+    descendants = tax.get_descendant_taxa('c__Thorarchaeia', collapse_subspecies=True, return_tree=True)
     print(descendants.write(properties=None))
     print(descendants.get_ascii(attributes=['sci_name', 'taxid', 'rank']))
-    tree = gtdb.get_topology(["p__Hydrothermarchaeota", "o__Peptococcales", "f__Korarchaeaceae", "GB_GCA_011358815.1"],
-                             intermediate_nodes=True, collapse_subspecies=True, annotate=True)
+
+    import itertools
+    taxids = list(itertools.chain.from_iterable(
+        tax.get_name_translator(["p__Hydrothermarchaeota", "o__Peptococcales", "f__Korarchaeaceae", "GB_GCA_011358815.1"])
+        .values()
+    ))
+    tree = tax.get_topology(taxids, intermediate_nodes=True, collapse_subspecies=True, annotate=True)
     print(tree.get_ascii(attributes=["taxid", "sci_name", "rank"]))
 
     tree = PhyloTree('((c__Thorarchaeia, c__Lokiarchaeia), s__Caballeronia udeis);',
-                     sp_naming_function=lambda name: name)
-    tax2name, tax2track, tax2rank = gtdb.annotate_tree(tree, taxid_attr="name")
+                     sp_naming_function=lambda name: tax.get_name_translator([name])[name][0])
+    tax2name, tax2track, tax2rank = tax.annotate_tree(tree, taxid_attr="species")
     print(tree.get_ascii(attributes=["taxid", "name", "sci_name", "rank"]))
 
-    tree = PhyloTree('(RS_GCF_006228565.1, (Homo sapiens, Gallus gallus));', sp_naming_function=lambda name: name)
-    tax2name, tax2track, tax2rank = gtdb.annotate_tree(tree)
+    tree = PhyloTree('(RS_GCF_006228565.1, (Homo sapiens, Gallus gallus));',
+                     sp_naming_function=lambda name: tax.get_name_translator([name])[name][0])
+    tax2name, tax2track, tax2rank = tax.annotate_tree(tree, taxid_attr="species")
     print(tree.get_ascii(attributes=["taxid", "name", "sci_name", "rank"]))
 
-    print(gtdb.get_name_lineage(['RS_GCF_006228565.1', 'GB_GCA_001515945.1', "Homo sapiens", "Gallus"]))
+    print(tax.get_name_lineage(['RS_GCF_006228565.1', 'GB_GCA_001515945.1', "Homo sapiens", "Gallus"]))

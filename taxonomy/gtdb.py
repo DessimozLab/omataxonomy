@@ -156,7 +156,7 @@ def download_release(rel=None, dom=None):
 
 
 def download_dom(dom, rel, target_folder):
-    logger.info(f"download gtdb release '{rel}' from {GTDB_DOWNLOAD_BASE_URL}")
+    logger.info(f"download tax release '{rel}' from {GTDB_DOWNLOAD_BASE_URL}")
     files = [f"{dom}{fn}" for fn in (".tree.tar.gz", "_metadata.tar.gz")]
     extracted_files = []
     for file in files:
