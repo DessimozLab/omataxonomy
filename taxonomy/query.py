@@ -5,11 +5,9 @@ import os
 
 import pickle
 from collections import defaultdict, Counter
-
-from hashlib import md5
-
+from itertools import chain
+from tqdm import tqdm
 import sqlite3
-import math
 import tarfile
 import warnings
 from ete4 import PhyloTree
@@ -167,6 +165,29 @@ class Taxonomy:
             if common_name:
                 id2name[tax] = common_name
         return id2name
+
+    def get_mnemonic_names(self, taxids):
+        query = ','.join([f"{v}" for v in taxids])
+        cmd = f"select taxid, mnemonic FROM species WHERE taxid IN ({query});"
+        result = self.db.execute(cmd)
+        id2name = {}
+        for tax, os_code in result.fetchall():
+            if os_code:
+                id2name[tax] = os_code
+        return id2name
+
+    def get_mnemonic_translator(self, codes):
+        """Given a list of mnemonic codes, returns a dictionary
+        with thier corresponding taxids."""
+        code2id = {}
+        code2origcode = {c.upper(): c for c in codes}
+        query = ','.join([f'"{c}"' for c in code2origcode.keys()])
+        cmd = f'select mnemonic, taxid from species where mnemonic IN ({query})'
+        result = self.db.execute(cmd)
+        for code, taxid in result.fetchall():
+            ocode = code2origcode[code.upper()]
+            code2id.setdefault(ocode, []).append(taxid)
+        return code2id
 
     def get_taxid_translator(self, taxids, try_synonyms=True):
         """Given a list of taxids, returns a dictionary with their corresponding
@@ -547,6 +568,17 @@ class Taxonomy:
 
     #     return self.annotate_tree(t, tax2name, tax2track, attr_name="taxid")
 
+    def update_mnemonic_codes(self, speclist=None, extra_file=None):
+        """updates the mnemonic species codes.
+
+        :param speclist: uniprot species code file. If not provided, the latest version
+                         from UniProtKB is downloaded and used.
+
+        :param extra_file: a path to a file that contains extra mappings in TSV format,
+                           with two columns (CODE and taxid/sciname).
+        """
+        update_mnemonic_codes(self.db, speclist, extra_file)
+
 
 def load_gtdb_tree_from_dump(tar):
     from ete4 import Tree
@@ -575,6 +607,8 @@ def load_gtdb_tree_from_dump(tar):
             node2common[nodename] = taxname
         elif name_type in set(["mnemonic_code", "ncbi_taxid",  "ncbi_organism_name", "genbank equivalent name",
                                "anamorph", "genbank synonym", "genbank anamorph", "teleomorph"]):
+            if name_type == "ncbi_taxid":
+                taxname = f"ncbi_taxid:{taxname}"
 
             # Keep track synonyms, but ignore duplicate case-insensitive names. See https://github.com/etetoolkit/ete/issues/469
             synonym_key = (nodename, taxname.lower())
@@ -658,14 +692,14 @@ def update_db(dbfile, targz_file=None):
     print("Updating database: %s ..." % dbfile)
     generate_table(t)
 
-    # with open("syn.tab", "w") as SYN:
-    #     SYN.write('\n'.join(["%s\t%s" %(v[0],v[1]) for v in synonyms]))
+    with open("syn.tab", "w") as SYN:
+        SYN.write('\n'.join(["%s\t%s" %(v[0],v[1]) for v in synonyms]))
 
-    # with open("merged.tab", "w") as merged:
-    #     for line in tar.extractfile("merged.dmp"):
-    #         line = str(line.decode())
-    #         out_line = '\t'.join([_f.strip() for _f in line.split('|')[:2]])
-    #         merged.write(out_line+'\n')
+    with open("merged.tab", "w") as merged:
+        for line in tar.extractfile("merged.dmp"):
+            line = str(line.decode())
+            out_line = '\t'.join([_f.strip() for _f in line.split('|')[:2]])
+            merged.write(out_line+'\n')
     try:
         upload_data(dbfile)
     except:
@@ -692,11 +726,20 @@ def upload_data(dbfile):
     DROP TABLE IF EXISTS synonym;
     DROP TABLE IF EXISTS merged;
     CREATE TABLE stats (version INT PRIMARY KEY);
-    CREATE TABLE species (taxid INT PRIMARY KEY, parent INT, spname VARCHAR(50) COLLATE NOCASE, common VARCHAR(50) COLLATE NOCASE, rank VARCHAR(50), track TEXT);
-    CREATE TABLE synonym (taxid INT,spname VARCHAR(50) COLLATE NOCASE, PRIMARY KEY (spname, taxid));
+    CREATE TABLE species (taxid INT PRIMARY KEY, 
+                          parent INT, 
+                          spname VARCHAR(50) COLLATE NOCASE, 
+                          common VARCHAR(50) COLLATE NOCASE, 
+                          rank VARCHAR(50),
+                          mnemonic VARCHAR(5), 
+                          track TEXT);
+    CREATE TABLE synonym (taxid INT, 
+                          spname VARCHAR(50) COLLATE NOCASE, 
+                          PRIMARY KEY (spname, taxid));
     CREATE TABLE merged (taxid_old INT, taxid_new INT);
     CREATE INDEX spname1 ON species (spname COLLATE NOCASE);
     CREATE INDEX spname2 ON synonym (spname COLLATE NOCASE);
+    CREATE INDEX mnemonic ON species (mnemonic);
     """
     for cmd in create_cmd.split(';'):
         db.execute(cmd)
@@ -705,31 +748,54 @@ def upload_data(dbfile):
     db.execute("INSERT INTO stats (version) VALUES (%d);" % DB_VERSION)
     db.commit()
 
-    # for i, line in enumerate(open("syn.tab")):
-    #     if i%5000 == 0 :
-    #         print('\rInserting synonyms:     % 6d' %i, end=' ', file=sys.stderr)
-    #         sys.stderr.flush()
-    #     taxid, spname = line.strip('\n').split('\t')
-    #     db.execute("INSERT INTO synonym (taxid, spname) VALUES (?, ?);", (taxid, spname))
-    # print()
-    # db.commit()
-    # for i, line in enumerate(open("merged.tab")):
-    #     if i%5000 == 0 :
-    #         print('\rInserting taxid merges: % 6d' %i, end=' ', file=sys.stderr)
-    #         sys.stderr.flush()
-    #     taxid_old, taxid_new = line.strip('\n').split('\t')
-    #     db.execute("INSERT INTO merged (taxid_old, taxid_new) VALUES (?, ?);", (taxid_old, taxid_new))
-    # print()
-    # db.commit()
-    for i, line in enumerate(open("taxa.tab")):
-        if i % 5000 == 0:
-            print('\rInserting taxids:      % 6d' % i, end=' ', file=sys.stderr)
-            sys.stderr.flush()
-        taxid, parentid, spname, common, rank, lineage = line.strip('\n').split('\t')
-        db.execute("INSERT INTO species (taxid, parent, spname, common, rank, track) VALUES (?, ?, ?, ?, ?, ?);",
-                   (taxid, parentid, spname, common, rank, lineage))
-    print()
+    try:
+        with open("syn.tab", 'rt') as fh:
+            for i, line in tqdm(enumerate(fh), desc="inserting synonymes"):
+                taxid, spname = line.strip('\n').split('\t')
+                db.execute("INSERT INTO synonym (taxid, spname) VALUES (?, ?);", (taxid, spname))
+        db.commit()
+    except FileNotFoundError:
+        print("no synonym table found. skipping", file=sys.stderr)
+
+    try:
+        with open("merged.tab", "rt") as fh:
+            for i, line in tqdm(enumerate(fh), desc="inserting taxid merges"):
+                taxid_old, taxid_new = line.strip('\n').split('\t')
+                db.execute("INSERT INTO merged (taxid_old, taxid_new) VALUES (?, ?);", (taxid_old, taxid_new))
+        db.commit()
+    except FileNotFoundError:
+        print("no merged.tab found. skipping", file=sys.stderr)
+
+    with open("taxa.tab", "rt") as fh:
+        for i, line in tqdm(enumerate(fh), desc="inserting taxids"):
+            taxid, parentid, spname, common, rank, lineage = line.strip('\n').split('\t')
+            db.execute("INSERT INTO species (taxid, parent, spname, common, rank, mnemonic, track) VALUES (?, ?, ?, ?, ?, ?, ?);",
+                       (taxid, parentid, spname, common, rank, "", lineage))
     db.commit()
+    update_mnemonic_codes(db)
+    print("\rdatabase created", file=sys.stderr)
+
+
+def update_mnemonic_codes(db, speclist=None, extra_file=None):
+    from taxonomy.mnemonic import iter_mnemonic_species_codes, iter_extra_mnemonic_species_codes
+    db.execute("UPDATE species set mnemonic = ''")
+    try:
+        for i, (os_code, taxid) in tqdm(enumerate(chain(iter_mnemonic_species_codes(speclist),
+                                                  iter_extra_mnemonic_species_codes(extra_file))),
+                                        desc="inserting mnemonic codes"):
+            try:
+                taxid = int(taxid)
+                result = db.execute("SELECT taxid FROM synonym WHERE spname=? ORDER BY taxid DESC", (f"ncbi_taxid:{taxid}",))
+                e = result.fetchone()
+                if e is not None:
+                    taxid = e[0]
+                db.execute("UPDATE species SET mnemonic = ? WHERE taxid = ?", (os_code, taxid))
+            except ValueError:
+                db.execute("UPDATE species SET mnemonic = ? where spname = ?", (os_code, taxid))
+        db.commit()
+    except Exception as e:
+        print(f"update mnemoinc codes failed: {e}")
+        db.rollback()
 
 
 if __name__ == "__main__":
@@ -760,3 +826,12 @@ if __name__ == "__main__":
     print(tree.get_ascii(attributes=["taxid", "name", "sci_name", "rank"]))
 
     print(tax.get_name_lineage(['RS_GCF_006228565.1', 'GB_GCA_001515945.1', "Homo sapiens", "Gallus"]))
+
+    print(tax.get_mnemonic_names([9606, 43715, 658031, 73382, 9823]))
+
+    lin = tax.get_lineage(10090)
+    t2n = tax.get_taxid_translator(lin)
+    print([t2n[x] for x in lin])
+
+    # tax.update_mnemonic_codes()
+    print(tax.get_mnemonic_translator(['MOUSE', 'YEAST', 'ASHGO', 'CAPSP', ]))
