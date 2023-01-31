@@ -42,7 +42,7 @@ def hash_to_int(val):
 def write_dump_files(tree, offset, node_dump, names_dump):
     re_label = re.compile(r"(?P<bootstrap>[\d.]+)?:?(?P<name>[\w -]+)?")
     for node in tree.preorder_node_iter():
-        #node.annotations.add_new("taxid", offset)
+
         offset -= 1
         if node.label is not None:
             m = re_label.match(node.label)
@@ -90,8 +90,14 @@ def write_dump_files(tree, offset, node_dump, names_dump):
         # GenBank hidden flag (1 or 0)            -- 1 if name is suppressed in GenBank entry lineage
         # hidden subtree root flag (1 or 0)       -- 1 if this subtree has no sequence data yet
         # comments				-- free-text comments and citations
+        ### additional fields
+        #  length of branch in GTDB tree to parent node
+        #  parent node of lineage (skipping intermediate nodes)
+        #  length of branch in GTDB tree to next lineage node == sum of branches to next lineage node
+        #  is_reference_genome (1 or 0)    -- 1 if it is the reference genome of a species
+        is_ref = 1 if node.annotations.get_value('is_reference', False) else 0
         nodes_buffer = [taxid, parent_taxid, rank, "XX", 0, 0, 11, 1, 1, 0, (0 if rank is not None else 1),
-                        0, "", node.edge_length, lineage_parent_taxid, lineage_parent_dist]
+                        0, "", node.edge_length, lineage_parent_taxid, lineage_parent_dist, is_ref]
         node_dump.write("\t|\t".join(map(str, nodes_buffer)) + "\n")
         for key in ("scientific_name", "ncbi_taxid", "mnemonic_code", "ncbi_organism_name"):
             val = node.annotations.get_value(key)

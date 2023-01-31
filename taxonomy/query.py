@@ -4,13 +4,14 @@ import sys
 import os
 
 import pickle
+import tempfile
 from collections import defaultdict, Counter
 from itertools import chain
 from tqdm import tqdm
 import sqlite3
 import tarfile
 import warnings
-from ete4 import PhyloTree
+from ete3 import PhyloTree
 
 __all__ = ["Taxonomy", "is_taxadb_up_to_date"]
 
@@ -360,7 +361,7 @@ class Taxonomy:
                         node = elem2node.setdefault(elem, PhyloTree())
                         node.name = str(elem)
                         node.taxid = elem
-                        node.add_prop("rank", str(id2rank.get(int(elem), "no rank")))
+                        node.add_feature("rank", str(id2rank.get(int(elem), "no rank")))
                     else:
                         node = elem2node[elem]
                     track.append(node)
@@ -371,7 +372,7 @@ class Taxonomy:
                 for elem in track:
                     if parent and elem not in parent.children:
                         parent.add_child(elem)
-                    if rank_limit and elem.props.get('rank') == rank_limit:
+                    if rank_limit and elem.rank == rank_limit:
                         break
                     parent = elem
             root = elem2node[1]
@@ -390,7 +391,7 @@ class Taxonomy:
         if collapse_subspecies:
             to_detach = []
             for node in tree.traverse():
-                if node.props.get('rank') == "species":
+                if node.rank == "species":
                     to_detach.extend(node.children)
             for n in to_detach:
                 n.detach()
@@ -445,25 +446,25 @@ class Taxonomy:
             except (ValueError, AttributeError):
                 node_taxid = None
 
-            n.add_prop('taxid', node_taxid)
+            n.add_feature('taxid', node_taxid)
             if node_taxid:
                 if node_taxid in merged_conversion:
                     node_taxid = merged_conversion[node_taxid]
-                n.add_props(sci_name=tax2name.get(node_taxid, getattr(n, taxid_attr, '')),
+                n.add_features(sci_name=tax2name.get(node_taxid, getattr(n, taxid_attr, '')),
                             common_name=tax2common_name.get(node_taxid, ''),
                             lineage=tax2track.get(node_taxid, []),
                             rank=tax2rank.get(node_taxid, 'Unknown'),
                             named_lineage=[tax2name.get(tax, str(tax)) for tax in tax2track.get(node_taxid, [])])
             elif n.is_leaf():
-                n.add_props(sci_name=getattr(n, taxid_attr, 'NA'),
+                n.add_features(sci_name=getattr(n, taxid_attr, 'NA'),
                             common_name='',
                             lineage=[],
                             rank='Unknown',
                             named_lineage=[])
             else:
-                lineage = self._common_lineage([lf.props.get('lineage') for lf in n2leaves[n]])
+                lineage = self._common_lineage([lf.lineage for lf in n2leaves[n]])
                 ancestor = lineage[-1]
-                n.add_props(sci_name=tax2name.get(ancestor, str(ancestor)),
+                n.add_features(sci_name=tax2name.get(ancestor, str(ancestor)),
                             common_name=tax2common_name.get(ancestor, ''),
                             taxid=ancestor,
                             lineage=lineage,
@@ -581,7 +582,7 @@ class Taxonomy:
 
 
 def load_gtdb_tree_from_dump(tar):
-    from ete4 import Tree
+    from ete3 import Tree
     # Download: gtdbdump/gtdbr202dump.tar.z
     parent2child = {}
     name2node = {}
@@ -628,10 +629,12 @@ def load_gtdb_tree_from_dump(tar):
         n = Tree()
         n.name = nodename
         # n.taxname = node2taxname[nodename]
-        n.add_prop('taxname', node2taxname[nodename])
+        n.add_feature('taxname', node2taxname[nodename])
         if nodename in node2common:
-            n.add_prop('common_name', node2taxname[nodename])
-        n.add_prop('rank', fields[2].strip())
+            n.add_feature('common_name', node2taxname[nodename])
+        n.add_feature('rank', fields[2].strip())
+        if len(fields) > 16:
+            n.add_feature("is_ref", fields[16].strip())
         parent2child[nodename] = parentname
         name2node[nodename] = n
     print(len(name2node), "nodes loaded.")
@@ -648,26 +651,25 @@ def load_gtdb_tree_from_dump(tar):
     return t, synonyms
 
 
-def generate_table(t):
-    OUT = open("taxa.tab", "w")
-    for j, n in enumerate(t.traverse()):
-        if j % 1000 == 0:
-            print("\r", j, "generating entries...", end=' ')
-        temp_node = n
-        track = []
-        while temp_node:
-            temp_rank = temp_node.props.get("rank")
-            if temp_rank not in (None, "None"):
-                track.append(temp_node.name)
-            temp_node = temp_node.up
-        if n.up:
-            print('\t'.join(
-                [n.name, n.up.name, n.props.get('taxname'), n.props.get("common_name", ''), n.props.get("rank"),
-                 ','.join(track)]), file=OUT)
-        else:
-            print('\t'.join([n.name, "", n.props.get('taxname'), n.props.get("common_name", ''), n.props.get("rank"),
-                             ','.join(track)]), file=OUT)
-    OUT.close()
+def generate_table(t, input_folder):
+    with open(os.path.join(input_folder, "taxa.tab"), "w") as OUT:
+        for j, n in enumerate(t.traverse()):
+            if j % 1000 == 0:
+                print("\r", j, "generating entries...", end=' ')
+            temp_node = n
+            track = []
+            while temp_node:
+                temp_rank = temp_node.rank
+                if temp_rank not in (None, "None"):
+                    track.append(temp_node.name)
+                temp_node = temp_node.up
+            if n.up:
+                print('\t'.join(
+                    [n.name, n.up.name, n.taxname, getattr(n, "common_name", ""), n.rank,
+                     getattr(n, "is_ref", ""), ','.join(track)]), file=OUT)
+            else:
+                print('\t'.join([n.name, "", n.taxname, getattr(n, "common_name", ""), n.rank,
+                                 getattr(n, "is_ref", ""), ','.join(track)]), file=OUT)
 
 
 def update_db(dbfile, targz_file=None):
@@ -685,33 +687,28 @@ def update_db(dbfile, targz_file=None):
     prepostorder_full = [int(node.name) for post, node in t.iter_prepostorder()]
     with open(dbfile + ".full.traverse.pkl", "wb") as fh:
         pickle.dump(prepostorder_full, fh, 5)
-    prepostorder_lineage = [int(node.name) for post, node in t.iter_prepostorder() if node.props.get('rank') not in (None, "None")]
+    prepostorder_lineage = [int(node.name) for post, node in t.iter_prepostorder() if node.rank not in (None, "None")]
     with open(dbfile + ".traverse.pkl", "wb") as fh:
         pickle.dump(prepostorder_lineage, fh, 5)
 
     print("Updating database: %s ..." % dbfile)
-    generate_table(t)
+    with tempfile.TemporaryDirectory() as tab_dir:
+        generate_table(t, tab_dir)
 
-    with open("syn.tab", "w") as SYN:
-        SYN.write('\n'.join(["%s\t%s" %(v[0],v[1]) for v in synonyms]))
+        with open(os.path.join(tab_dir, "syn.tab"), "w") as SYN:
+            SYN.write('\n'.join(["%s\t%s" %(v[0],v[1]) for v in synonyms]))
 
-    with open("merged.tab", "w") as merged:
-        for line in tar.extractfile("merged.dmp"):
-            line = str(line.decode())
-            out_line = '\t'.join([_f.strip() for _f in line.split('|')[:2]])
-            merged.write(out_line+'\n')
-    try:
-        upload_data(dbfile)
-    except:
-        raise
-    else:
-        os.system("rm taxa.tab")
-        # remove only downloaded taxdump file
-        if not targz_file:
-            os.system("rm gtdbtaxdump.tar.gz")
+        with open(os.path.join(tab_dir, "merged.tab"), "w") as merged:
+            for line in tar.extractfile("merged.dmp"):
+                line = str(line.decode())
+                out_line = '\t'.join([_f.strip() for _f in line.split('|')[:2]])
+                merged.write(out_line+'\n')
+        try:
+            upload_data(dbfile, tab_dir)
+        except:
+            raise
 
-
-def upload_data(dbfile):
+def upload_data(dbfile, input_folder):
     print()
     print('Uploading to', dbfile)
     basepath = os.path.split(dbfile)[0]
@@ -731,7 +728,8 @@ def upload_data(dbfile):
                           spname VARCHAR(50) COLLATE NOCASE, 
                           common VARCHAR(50) COLLATE NOCASE, 
                           rank VARCHAR(50),
-                          mnemonic VARCHAR(5), 
+                          mnemonic VARCHAR(5),
+                          is_reference BOOLEAN, 
                           track TEXT);
     CREATE TABLE synonym (taxid INT, 
                           spname VARCHAR(50) COLLATE NOCASE, 
@@ -749,7 +747,7 @@ def upload_data(dbfile):
     db.commit()
 
     try:
-        with open("syn.tab", 'rt') as fh:
+        with open(os.path.join(input_folder, "syn.tab"), 'rt') as fh:
             for i, line in tqdm(enumerate(fh), desc="inserting synonymes"):
                 taxid, spname = line.strip('\n').split('\t')
                 db.execute("INSERT INTO synonym (taxid, spname) VALUES (?, ?);", (taxid, spname))
@@ -758,7 +756,7 @@ def upload_data(dbfile):
         print("no synonym table found. skipping", file=sys.stderr)
 
     try:
-        with open("merged.tab", "rt") as fh:
+        with open(os.path.join(input_folder, "merged.tab"), "rt") as fh:
             for i, line in tqdm(enumerate(fh), desc="inserting taxid merges"):
                 taxid_old, taxid_new = line.strip('\n').split('\t')
                 db.execute("INSERT INTO merged (taxid_old, taxid_new) VALUES (?, ?);", (taxid_old, taxid_new))
@@ -766,11 +764,11 @@ def upload_data(dbfile):
     except FileNotFoundError:
         print("no merged.tab found. skipping", file=sys.stderr)
 
-    with open("taxa.tab", "rt") as fh:
+    with open(os.path.join(input_folder, "taxa.tab"), "rt") as fh:
         for i, line in tqdm(enumerate(fh), desc="inserting taxids"):
-            taxid, parentid, spname, common, rank, lineage = line.strip('\n').split('\t')
-            db.execute("INSERT INTO species (taxid, parent, spname, common, rank, mnemonic, track) VALUES (?, ?, ?, ?, ?, ?, ?);",
-                       (taxid, parentid, spname, common, rank, "", lineage))
+            taxid, parentid, spname, common, rank, is_ref, lineage = line.strip('\n').split('\t')
+            db.execute("INSERT INTO species (taxid, parent, spname, common, rank, mnemonic, is_reference, track) VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
+                       (taxid, parentid, spname, common, rank, "", is_ref, lineage))
     db.commit()
     update_mnemonic_codes(db)
     print("\rdatabase created", file=sys.stderr)
@@ -785,7 +783,7 @@ def update_mnemonic_codes(db, speclist=None, extra_file=None):
                                         desc="inserting mnemonic codes"):
             try:
                 taxid = int(taxid)
-                result = db.execute("SELECT taxid FROM synonym WHERE spname=? ORDER BY taxid DESC", (f"ncbi_taxid:{taxid}",))
+                result = db.execute("SELECT syn.taxid FROM synonym as syn JOIN species as sp ON syn.taxid = sp.taxid WHERE syn.spname=? ORDER BY sp.is_reference DESC, syn.taxid DESC", (f"ncbi_taxid:{taxid}",))
                 e = result.fetchone()
                 if e is not None:
                     taxid = e[0]
@@ -804,7 +802,7 @@ if __name__ == "__main__":
     #tax.update_taxonomy_database(DEFAULT_DUMP)
 
     descendants = tax.get_descendant_taxa('c__Thorarchaeia', collapse_subspecies=True, return_tree=True)
-    print(descendants.write(properties=None))
+    print(descendants.write(features=None))
     print(descendants.get_ascii(attributes=['sci_name', 'taxid', 'rank']))
 
     import itertools
@@ -833,5 +831,5 @@ if __name__ == "__main__":
     t2n = tax.get_taxid_translator(lin)
     print([t2n[x] for x in lin])
 
-    # tax.update_mnemonic_codes()
+    tax.update_mnemonic_codes()
     print(tax.get_mnemonic_translator(['MOUSE', 'YEAST', 'ASHGO', 'CAPSP', ]))
