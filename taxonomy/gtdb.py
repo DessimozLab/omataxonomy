@@ -2,17 +2,20 @@ import collections
 import tempfile
 
 import dendropy
+import numpy
 import csv
 import re
 import tarfile
 from urllib.request import urlretrieve
 import logging
+from hashlib import md5
 
 logger = logging.getLogger(__name__)
 
 GTDB_DOWNLOAD_BASE_URL = "https://data.gtdb.ecogenomic.org/releases"
 NCBI_DOMAIN_ROOT = {"Bacteria": 2, "Archaea": 2157}
-PREFIX_2_RANK = {"p__": "phylum", "c__": "class", "o__": "order", "f__": "family", "g__": "genus", "s__": "species"}
+PREFIX_2_RANK = {"d__": "superkingdom", "p__": "phylum", "c__": "class", "o__": "order",
+                 "f__": "family", "g__": "genus", "s__": "species"}
 
 
 def _load_meta(fn):
@@ -31,24 +34,27 @@ def build_tree_dump(tree_fn, meta_fn, offset):
         write_dump_files(tree, offset, nodes_dump, names_dump)
 
 
+def hash_to_int(val):
+    h = md5(str(val).encode('utf-8'))
+    return -abs(int(numpy.frombuffer(h.digest()[:4], dtype='i4')[0]))
+
+
 def write_dump_files(tree, offset, node_dump, names_dump):
     re_label = re.compile(r"(?P<bootstrap>[\d.]+)?:?(?P<name>[\w -]+)?")
     for node in tree.preorder_node_iter():
-        if node.label is not None and node.label.startswith('d__'):
-            node.label = node.label[3:]
-            node.annotations.add_new('taxid', NCBI_DOMAIN_ROOT[node.label])
-            node.annotations.add_new("rank", "superkingdom")
-            node.annotations.add_new("scientific_name", node.label)
-        else:
-            node.annotations.add_new("taxid", offset)
-            offset -= 1
-            if node.label is not None:
-                m = re_label.match(node.label)
-                if m.group("name") is not None:
-                    node.annotations.add_new("scientific_name", m.group("name"))
-                    node.annotations.add_new("rank", PREFIX_2_RANK[m.group("name")[:3]])
-                else:
-                    node.annotations.add_new("scientific_name", f"x__tax{node.annotations.get_value('taxid')}")
+        #node.annotations.add_new("taxid", offset)
+        offset -= 1
+        if node.label is not None:
+            m = re_label.match(node.label)
+            if m.group("name") is not None:
+                node.annotations.add_new("scientific_name", m.group("name"))
+                node.annotations.add_new("rank", PREFIX_2_RANK[m.group("name")[:3]])
+                node.annotations.add_new("taxid", hash_to_int(m.group('name')))
+            else:
+                taxid = offset
+                offset -= 1
+                node.annotations.add_new("scientific_name", f"x__tax{taxid}")
+                node.annotations.add_new("taxid", taxid)
 
         rank = node.annotations.get_value('rank')
         taxid = node.annotations.require_value('taxid')
@@ -132,6 +138,7 @@ def extend_tree_with_all_genomes(tree, meta):
             c.annotations.add_new("is_reference", res['accession'] == n.taxon.label)
             c.annotations.add_new("rank", "subspecies")
             c.annotations.add_new("scientific_name", res['accession'])
+            c.annotations.add_new("taxid", hash_to_int(res['accession']))
             for tag in ("ncbi_taxid", "ncbi_organism_name", "ncbi_strain_identifiers", "ncbi_genbank_assembly_accession"):
                 c.annotations.add_new(tag, res[tag])
             s_node.add_child(c)
@@ -154,7 +161,6 @@ def download_release(rel=None, dom=None):
             build_tree_dump(tree_fn, meta_fn, offset=-10000 if d.startswith("ar") else -1000000)
 
 
-
 def download_dom(dom, rel, target_folder):
     logger.info(f"download tax release '{rel}' from {GTDB_DOWNLOAD_BASE_URL}")
     files = [f"{dom}{fn}" for fn in (".tree.tar.gz", "_metadata.tar.gz")]
@@ -168,7 +174,6 @@ def download_dom(dom, rel, target_folder):
         extracted_files.extend([z.name for z in tar_files])
         tar_fh.close()
     return extracted_files
-
 
 
 if __name__ == "__main__":
