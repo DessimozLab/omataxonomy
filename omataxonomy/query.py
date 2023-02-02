@@ -4,19 +4,17 @@ import sys
 import os
 
 import pickle
-import tempfile
 from collections import defaultdict, Counter
-from itertools import chain
-from tqdm import tqdm
 import sqlite3
-import tarfile
 import warnings
 from ete3 import PhyloTree
+from .build_db import update_db, update_mnemonic_codes
 
 __all__ = ["Taxonomy", "is_taxadb_up_to_date"]
 
-DB_VERSION = 2
-DEFAULT_DB = os.path.join(os.path.dirname(os.path.realpath(__file__)), '.data', 'taxa.sqlite')
+
+DB_VERSION = 3
+DEFAULT_DB = os.path.expanduser(os.path.join('~','.config', 'omataxonomy', 'taxonomy.sqlite'))
 DEFAULT_DUMP = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data', 'omatax.tar.gz')
 
 
@@ -51,17 +49,17 @@ class Taxonomy:
             self.update_taxonomy_database(taxdump_file)
 
         if dbfile != DEFAULT_DB and not os.path.exists(self.dbfile):
-            print('taxonomy database not present yet (first time used?)', file=sys.stderr)
+            print('omataxonomy database not present yet (first time used?)', file=sys.stderr)
             self.update_taxonomy_database(taxdump_file=DEFAULT_DUMP)
 
         if not os.path.exists(self.dbfile):
-            raise ValueError("Cannot open taxonomy database: %s" % self.dbfile)
+            raise ValueError("Cannot open omataxonomy database: %s" % self.dbfile)
 
         self.db = None
         self._connect()
 
         if not is_taxadb_up_to_date(self.dbfile):
-            print('taxonomy database format is outdated. Upgrading', file=sys.stderr)
+            print('omataxonomy database format is outdated. Upgrading', file=sys.stderr)
             self.update_taxonomy_database(taxdump_file)
 
         if memory:
@@ -70,14 +68,11 @@ class Taxonomy:
             filedb.backup(self.db)
 
     def update_taxonomy_database(self, taxdump_file=None):
-        """Updates the GTDB taxonomy database by downloading and parsing the latest
+        """Updates the omataxonomy database by downloading and parsing the latest
         gtdbtaxdump.tar.gz file from gtdbdump folder.
         :param None taxdump_file: an alternative location of the gtdbtaxdump.tar.gz file.
         """
-        if not taxdump_file:
-            update_db(self.dbfile)
-        else:
-            update_db(self.dbfile, targz_file=taxdump_file)
+        update_db(self.dbfile, targz_file=taxdump_file)
 
     def _connect(self):
         self.db = sqlite3.connect(self.dbfile)
@@ -95,7 +90,7 @@ class Taxonomy:
         return conv_all_taxids, conversion
 
     def get_rank(self, taxids):
-        'return a dictionary converting a list of taxids into their corresponding GTDB taxonomy rank'
+        'return a dictionary converting a list of taxids into their corresponding GTDB omataxonomy rank'
 
         all_ids = set(taxids)
         all_ids.discard(None)
@@ -126,12 +121,12 @@ class Taxonomy:
         """Given a valid taxname, return its corresponding lineage track as a
         hierarchically sorted list of parent taxnames.
         """
-        name_lineages = []
+        name_lineages = {}
         name2taxid = self.get_name_translator(taxnames)
         for key, value in name2taxid.items():
             lineage = self.get_lineage(value[0])
             names = self.get_taxid_translator(lineage)
-            name_lineages.append({key: [names[taxid] for taxid in lineage]})
+            name_lineages.update({key: [names[taxid] for taxid in lineage]})
 
         return name_lineages
 
@@ -296,7 +291,7 @@ class Taxonomy:
             return [tid for tid, count in descendants.items() if count == 1]
 
     def get_topology(self, taxids, intermediate_nodes=False, rank_limit=None, collapse_subspecies=False, annotate=True):
-        """Given a list of taxid numbers, return the minimal pruned GTDB taxonomy tree
+        """Given a list of taxid numbers, return the minimal pruned GTDB omataxonomy tree
         containing all of them.
 
         :param False intermediate_nodes: If True, single child nodes
@@ -565,7 +560,7 @@ class Taxonomy:
     #         if n.taxid == 0:
     #             not_found += 1
     #     if not_found:
-    #         print >>sys.stderr, "WARNING: %s nodes where not found within NCBI taxonomy!!" %not_found
+    #         print >>sys.stderr, "WARNING: %s nodes where not found within NCBI omataxonomy!!" %not_found
 
     #     return self.annotate_tree(t, tax2name, tax2track, attr_name="taxid")
 
@@ -579,221 +574,6 @@ class Taxonomy:
                            with two columns (CODE and taxid/sciname).
         """
         update_mnemonic_codes(self.db, speclist, extra_file)
-
-
-def load_gtdb_tree_from_dump(tar):
-    from ete3 import Tree
-    # Download: gtdbdump/gtdbr202dump.tar.z
-    parent2child = {}
-    name2node = {}
-    node2taxname = {}
-    synonyms = set()
-    name2rank = {}
-    node2common = {}
-    print("Loading node names...")
-    unique_nocase_synonyms = set()
-    for line in tar.extractfile("names.dmp"):
-        line = str(line.decode())
-        fields = [_f.strip() for _f in line.split("|")]
-        nodename = fields[0]
-        name_type = fields[3].lower()
-        taxname = fields[1]
-
-        # Clean up tax names so we make sure the don't include quotes. See https://github.com/etetoolkit/ete/issues/469
-        taxname = taxname.rstrip('"').lstrip('"')
-
-        if name_type in ("scientific name", "scientific_name"):
-            node2taxname[nodename] = taxname
-        if name_type == "genbank common name":
-            node2common[nodename] = taxname
-        elif name_type in set(["mnemonic_code", "ncbi_taxid",  "ncbi_organism_name", "genbank equivalent name",
-                               "anamorph", "genbank synonym", "genbank anamorph", "teleomorph"]):
-            if name_type == "ncbi_taxid":
-                taxname = f"ncbi_taxid:{taxname}"
-
-            # Keep track synonyms, but ignore duplicate case-insensitive names. See https://github.com/etetoolkit/ete/issues/469
-            synonym_key = (nodename, taxname.lower())
-            if synonym_key not in unique_nocase_synonyms:
-                unique_nocase_synonyms.add(synonym_key)
-                synonyms.add((nodename, taxname))
-
-    print(len(node2taxname), "names loaded.")
-    print(len(synonyms), "synonyms loaded.")
-
-    print("Loading nodes...")
-    for line in tar.extractfile("nodes.dmp"):
-        line = str(line.decode())
-        fields = line.split("|")
-        nodename = fields[0].strip()
-        parentname = fields[1].strip()
-        n = Tree()
-        n.name = nodename
-        # n.taxname = node2taxname[nodename]
-        n.add_feature('taxname', node2taxname[nodename])
-        if nodename in node2common:
-            n.add_feature('common_name', node2taxname[nodename])
-        n.add_feature('rank', fields[2].strip())
-        if len(fields) > 16:
-            n.add_feature("is_ref", fields[16].strip())
-        parent2child[nodename] = parentname
-        name2node[nodename] = n
-    print(len(name2node), "nodes loaded.")
-
-    print("Linking nodes...")
-    for node in name2node:
-        if node == "1":
-            t = name2node[node]
-        else:
-            parent = parent2child[node]
-            parent_node = name2node[parent]
-            parent_node.add_child(name2node[node])
-    print("Tree is loaded.")
-    return t, synonyms
-
-
-def generate_table(t, input_folder):
-    with open(os.path.join(input_folder, "taxa.tab"), "w") as OUT:
-        for j, n in enumerate(t.traverse()):
-            if j % 1000 == 0:
-                print("\r", j, "generating entries...", end=' ')
-            temp_node = n
-            track = []
-            while temp_node:
-                temp_rank = temp_node.rank
-                if temp_rank not in (None, "None"):
-                    track.append(temp_node.name)
-                temp_node = temp_node.up
-            if n.up:
-                print('\t'.join(
-                    [n.name, n.up.name, n.taxname, getattr(n, "common_name", ""), n.rank,
-                     getattr(n, "is_ref", ""), ','.join(track)]), file=OUT)
-            else:
-                print('\t'.join([n.name, "", n.taxname, getattr(n, "common_name", ""), n.rank,
-                                 getattr(n, "is_ref", ""), ','.join(track)]), file=OUT)
-
-
-def update_db(dbfile, targz_file=None):
-    basepath = os.path.split(dbfile)[0]
-    if basepath and not os.path.exists(basepath):
-        os.mkdir(basepath)
-
-    try:
-        tar = tarfile.open(targz_file, 'r')
-    except:
-        raise ValueError("Please provide taxa dump tar.gz file")
-
-    t, synonyms = load_gtdb_tree_from_dump(tar)
-
-    prepostorder_full = [int(node.name) for post, node in t.iter_prepostorder()]
-    with open(dbfile + ".full.traverse.pkl", "wb") as fh:
-        pickle.dump(prepostorder_full, fh, 5)
-    prepostorder_lineage = [int(node.name) for post, node in t.iter_prepostorder() if node.rank not in (None, "None")]
-    with open(dbfile + ".traverse.pkl", "wb") as fh:
-        pickle.dump(prepostorder_lineage, fh, 5)
-
-    print("Updating database: %s ..." % dbfile)
-    with tempfile.TemporaryDirectory() as tab_dir:
-        generate_table(t, tab_dir)
-
-        with open(os.path.join(tab_dir, "syn.tab"), "w") as SYN:
-            SYN.write('\n'.join(["%s\t%s" %(v[0],v[1]) for v in synonyms]))
-
-        with open(os.path.join(tab_dir, "merged.tab"), "w") as merged:
-            for line in tar.extractfile("merged.dmp"):
-                line = str(line.decode())
-                out_line = '\t'.join([_f.strip() for _f in line.split('|')[:2]])
-                merged.write(out_line+'\n')
-        try:
-            upload_data(dbfile, tab_dir)
-        except:
-            raise
-
-def upload_data(dbfile, input_folder):
-    print()
-    print('Uploading to', dbfile)
-    basepath = os.path.split(dbfile)[0]
-    if basepath and not os.path.exists(basepath):
-        os.mkdir(basepath)
-
-    db = sqlite3.connect(dbfile)
-
-    create_cmd = """
-    DROP TABLE IF EXISTS stats;
-    DROP TABLE IF EXISTS species;
-    DROP TABLE IF EXISTS synonym;
-    DROP TABLE IF EXISTS merged;
-    CREATE TABLE stats (version INT PRIMARY KEY);
-    CREATE TABLE species (taxid INT PRIMARY KEY, 
-                          parent INT, 
-                          spname VARCHAR(50) COLLATE NOCASE, 
-                          common VARCHAR(50) COLLATE NOCASE, 
-                          rank VARCHAR(50),
-                          mnemonic VARCHAR(5),
-                          is_reference BOOLEAN, 
-                          track TEXT);
-    CREATE TABLE synonym (taxid INT, 
-                          spname VARCHAR(50) COLLATE NOCASE, 
-                          PRIMARY KEY (spname, taxid));
-    CREATE TABLE merged (taxid_old INT, taxid_new INT);
-    CREATE INDEX spname1 ON species (spname COLLATE NOCASE);
-    CREATE INDEX spname2 ON synonym (spname COLLATE NOCASE);
-    CREATE INDEX mnemonic ON species (mnemonic);
-    """
-    for cmd in create_cmd.split(';'):
-        db.execute(cmd)
-    print()
-
-    db.execute("INSERT INTO stats (version) VALUES (%d);" % DB_VERSION)
-    db.commit()
-
-    try:
-        with open(os.path.join(input_folder, "syn.tab"), 'rt') as fh:
-            for i, line in tqdm(enumerate(fh), desc="inserting synonymes"):
-                taxid, spname = line.strip('\n').split('\t')
-                db.execute("INSERT INTO synonym (taxid, spname) VALUES (?, ?);", (taxid, spname))
-        db.commit()
-    except FileNotFoundError:
-        print("no synonym table found. skipping", file=sys.stderr)
-
-    try:
-        with open(os.path.join(input_folder, "merged.tab"), "rt") as fh:
-            for i, line in tqdm(enumerate(fh), desc="inserting taxid merges"):
-                taxid_old, taxid_new = line.strip('\n').split('\t')
-                db.execute("INSERT INTO merged (taxid_old, taxid_new) VALUES (?, ?);", (taxid_old, taxid_new))
-        db.commit()
-    except FileNotFoundError:
-        print("no merged.tab found. skipping", file=sys.stderr)
-
-    with open(os.path.join(input_folder, "taxa.tab"), "rt") as fh:
-        for i, line in tqdm(enumerate(fh), desc="inserting taxids"):
-            taxid, parentid, spname, common, rank, is_ref, lineage = line.strip('\n').split('\t')
-            db.execute("INSERT INTO species (taxid, parent, spname, common, rank, mnemonic, is_reference, track) VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
-                       (taxid, parentid, spname, common, rank, "", is_ref, lineage))
-    db.commit()
-    update_mnemonic_codes(db)
-    print("\rdatabase created", file=sys.stderr)
-
-
-def update_mnemonic_codes(db, speclist=None, extra_file=None):
-    from taxonomy.mnemonic import iter_mnemonic_species_codes, iter_extra_mnemonic_species_codes
-    db.execute("UPDATE species set mnemonic = ''")
-    try:
-        for i, (os_code, taxid) in tqdm(enumerate(chain(iter_mnemonic_species_codes(speclist),
-                                                  iter_extra_mnemonic_species_codes(extra_file))),
-                                        desc="inserting mnemonic codes"):
-            try:
-                taxid = int(taxid)
-                result = db.execute("SELECT syn.taxid FROM synonym as syn JOIN species as sp ON syn.taxid = sp.taxid WHERE syn.spname=? ORDER BY sp.is_reference DESC, syn.taxid DESC", (f"ncbi_taxid:{taxid}",))
-                e = result.fetchone()
-                if e is not None:
-                    taxid = e[0]
-                db.execute("UPDATE species SET mnemonic = ? WHERE taxid = ?", (os_code, taxid))
-            except ValueError:
-                db.execute("UPDATE species SET mnemonic = ? where spname = ?", (os_code, taxid))
-        db.commit()
-    except Exception as e:
-        print(f"update mnemoinc codes failed: {e}")
-        db.rollback()
 
 
 if __name__ == "__main__":
@@ -823,7 +603,7 @@ if __name__ == "__main__":
     tax2name, tax2track, tax2rank = tax.annotate_tree(tree, taxid_attr="species")
     print(tree.get_ascii(attributes=["taxid", "name", "sci_name", "rank"]))
 
-    print(tax.get_name_lineage(['RS_GCF_006228565.1', 'GB_GCA_001515945.1', "Homo sapiens", "Gallus"]))
+    print(tax.get_name_lineage(['RS_GCF_006228565.1', 'GB_GCA_001515945.1', "Homo sapiens", "f__Leptotrichiaceae", "Gallus"]))
 
     print(tax.get_mnemonic_names([9606, 43715, 658031, 73382, 9823]))
 

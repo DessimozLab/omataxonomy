@@ -1,6 +1,6 @@
 import collections
 import tempfile
-
+import os
 import dendropy
 import numpy
 import csv
@@ -30,7 +30,7 @@ def build_tree_dump(tree_fn, meta_fn, offset):
     meta = _load_meta(meta_fn)
     tree = extend_tree_with_all_genomes(tree, meta)
     tree = _fix_tree_single_nodes_per_rank(tree)
-    with open("nodes.dmp", "at") as nodes_dump, open("names.dmp", "at") as names_dump:
+    with open("gtdbnodes.dmp", "at") as nodes_dump, open("gtdbnames.dmp", "at") as names_dump:
         write_dump_files(tree, offset, nodes_dump, names_dump)
 
 
@@ -77,8 +77,8 @@ def write_dump_files(tree, offset, node_dump, names_dump):
                     break
                 lineage_parent_dist += p.edge_length
                 p = p.parent_node
-        # tax_id					-- node id in GenBank taxonomy database
-        # parent tax_id				-- parent node id in GenBank taxonomy database
+        # tax_id					-- node id in GenBank omataxonomy database
+        # parent tax_id				-- parent node id in GenBank omataxonomy database
         # rank					-- rank of this node (superkingdom, kingdom, ...)
         # embl code				-- locus-name prefix; not unique
         # division id				-- see division.dmp file
@@ -152,31 +152,32 @@ def extend_tree_with_all_genomes(tree, meta):
     return tree
 
 
-def download_release(rel=None, dom=None):
+def download_gtdb_release(rel=None, dom=None, target_folder=None):
+    from . import cwd
     if dom is None:
         dom = ["ar53", "bac120"]
     if isinstance(dom, str):
         dom = [dom]
     if rel is None:
         rel = "latest"
-
-    with tempfile.TemporaryDirectory() as target_dir:
-        target_dir = "./"
+    if target_folder is not None:
+        target_folder = "./"
+    with cwd(target_folder):
         for d in dom:
-            tree_fn, meta_fn = download_dom(d, rel, target_dir)
-            build_tree_dump(tree_fn, meta_fn, offset=-10000 if d.startswith("ar") else -1000000)
+            tree_fn, meta_fn = download_dom(d, rel)
+            build_tree_dump(tree_fn, meta_fn, offset=-10000 if d.startswith("ar") else -50000)
 
 
-def download_dom(dom, rel, target_folder):
+def download_dom(dom, rel):
     logger.info(f"download tax release '{rel}' from {GTDB_DOWNLOAD_BASE_URL}")
     files = [f"{dom}{fn}" for fn in (".tree.tar.gz", "_metadata.tar.gz")]
     extracted_files = []
     for file in files:
         url = f"{GTDB_DOWNLOAD_BASE_URL}/{rel}/{file}"
-        urlretrieve(url, f"{target_folder}/{file}")
+        urlretrieve(url, file)
         tar_fh = tarfile.open(file)
         tar_files = tar_fh.getmembers()
-        tar_fh.extractall(path=target_folder, members=tar_files)
+        tar_fh.extractall(members=tar_files)
         extracted_files.extend([z.name for z in tar_files])
         tar_fh.close()
     return extracted_files
@@ -184,4 +185,4 @@ def download_dom(dom, rel, target_folder):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
-    download_release()
+    download_gtdb_release()

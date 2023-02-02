@@ -12,7 +12,7 @@ def iter_mnemonic_species_codes(url=None):
         url = DEFAULT_URL
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpfile = Path(tmpdir) / "speclist.txt"
-        res = urllib.request.urlretrieve(url, tmpfile)
+        urllib.request.urlretrieve(url, tmpfile)
         end_header_seen = False
         spec_re = re.compile(r"(?P<code>[A-Z][A-Z0-9]{2,4})\s+[EBA]\s+(?P<taxid>\d+):")
         with open(tmpfile, "rt") as fh:
