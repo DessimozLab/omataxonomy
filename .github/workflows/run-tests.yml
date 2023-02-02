@@ -1,11 +1,13 @@
 
-name: Run tests of pyoma
+name: Run tests of omataxonomy
 
 on:
   push:
-    branches: [ $default-branch, develop ]
+    branches:
+      - main 
   pull_request:
-    branches: [ $default-branch ]
+    branches:
+      - main
 
 jobs:
   build:
