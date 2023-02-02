@@ -102,11 +102,15 @@ def generate_table(t, input_folder):
                                  getattr(n, "is_ref", ""), ','.join(track)]), file=OUT)
 
 
-def update_db(dbfile, targz_file=None):
+def update_db(dbfile, targz_file, remove_tarball=None):
     basepath = os.path.split(dbfile)[0]
     if basepath and not os.path.exists(basepath):
         os.mkdir(basepath)
 
+    if not os.path.exists(targz_file):
+        build_combined_tarball(targz_file)
+        if remove_tarball is None:
+            remove_tarball = True
     try:
         tar = tarfile.open(targz_file, 'r')
     except:
@@ -137,6 +141,9 @@ def update_db(dbfile, targz_file=None):
             upload_data(dbfile, tab_dir)
         except:
             raise
+
+    if remove_tarball:
+        os.remove(targz_file)
 
 
 def upload_data(dbfile, input_folder):

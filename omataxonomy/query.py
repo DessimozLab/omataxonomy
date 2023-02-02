@@ -14,8 +14,8 @@ __all__ = ["Taxonomy", "is_taxadb_up_to_date"]
 
 
 DB_VERSION = 3
-DEFAULT_DB = os.path.expanduser(os.path.join('~','.config', 'omataxonomy', 'taxonomy.sqlite'))
-DEFAULT_DUMP = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data', 'omatax.tar.gz')
+DEFAULT_DB = os.path.expanduser(os.path.join('~', '.config', 'omataxonomy', 'taxonomy.sqlite'))
+DEFAULT_DUMP = os.path.expanduser(os.path.join('~', '.config', 'omataxonomy', 'omatax.tar.gz'))
 
 
 def is_taxadb_up_to_date(dbfile=DEFAULT_DB):
@@ -611,5 +611,5 @@ if __name__ == "__main__":
     t2n = tax.get_taxid_translator(lin)
     print([t2n[x] for x in lin])
 
-    tax.update_mnemonic_codes()
+    #tax.update_mnemonic_codes()
     print(tax.get_mnemonic_translator(['MOUSE', 'YEAST', 'ASHGO', 'CAPSP', ]))
