@@ -182,7 +182,7 @@ class Taxonomy:
         """Given a list of mnemonic codes, returns a dictionary
         with thier corresponding taxids."""
         code2id = {}
-        code2origcode = {c.upper(): c for c in codes}
+        code2origcode = {c.upper(): c for c in codes if c not in (None, '')}
         query = ','.join([f'"{c}"' for c in code2origcode.keys()])
         cmd = f'select mnemonic, taxid from species where mnemonic IN ({query})'
         result = self.db.execute(cmd)
