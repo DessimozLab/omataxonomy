@@ -64,8 +64,8 @@ def load_tree_from_dump(tar):
         if nodename in node2common:
             n.add_feature('common_name', node2taxname[nodename])
         n.add_feature('rank', fields[2].strip())
-        if len(fields) > 16:
-            n.add_feature("is_ref", fields[16].strip())
+        if len(fields) > 13:
+            n.add_feature("is_ref", fields[13].strip())
         parent2child[nodename] = parentname
         name2node[nodename] = n
     print(len(name2node), "nodes loaded.")
