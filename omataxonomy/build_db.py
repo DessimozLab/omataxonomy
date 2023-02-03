@@ -37,7 +37,8 @@ def load_tree_from_dump(tar):
         if name_type == "genbank common name":
             node2common[nodename] = taxname
         elif name_type in set(["mnemonic_code", "ncbi_taxid",  "ncbi_organism_name", "genbank equivalent name",
-                               "anamorph", "genbank synonym", "genbank anamorph", "teleomorph"]):
+                               "ncbi_genbank_assembly_accession", "anamorph", "genbank synonym", "genbank anamorph",
+                               "teleomorph"]):
             if name_type == "ncbi_taxid":
                 taxname = f"ncbi_taxid:{taxname}"
 

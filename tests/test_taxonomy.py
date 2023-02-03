@@ -18,11 +18,18 @@ class TaxonomyTest(unittest.TestCase):
 
     def test_stable_gtdb_taxids(self):
         expected = {'f__Leptotrichiaceae': [-769982259],
-                    'GB_GCA_001515945.1': [-1584033363],
+                    'GB_GCA_001515945.1': [-1326969492],
                     's__Moorella thermoacetica': [-1120457739]}
         tax = Taxonomy()
         taxids = tax.get_name_translator(["f__Leptotrichiaceae", "GB_GCA_001515945.1", "s__Moorella thermoacetica"])
         self.assertEqual(taxids, expected)
+
+    def test_lineage_from_acc(self):
+        tax = Taxonomy()
+        taxid = tax.get_name_translator(['GCA_006226595.1'])
+        res = tax.get_name_lineage(['GCA_006226595.1'])['GCA_006226595.1']
+        self.assertEqual("root; d__Bacteria; p__Myxococcota_A; c__UBA796; o__UBA796; f__GCA-2862545; g__M1803; s__M1803 sp006226595; GB_GCA_006226595.1".split('; '),
+                         res)
 
 
 class EnvBasedTaxonomyTest(unittest.TestCase):
