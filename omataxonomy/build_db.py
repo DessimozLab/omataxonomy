@@ -227,7 +227,7 @@ def update_mnemonic_codes(db, speclist=None, extra_file=None):
                     taxid = e[0]
                 db.execute("UPDATE species SET mnemonic = ? WHERE taxid = ?", (os_code, taxid))
             except ValueError:
-                db.execute("UPDATE species SET mnemonic = ? where spname = ?", (os_code, taxid))
+                db.execute("UPDATE species SET mnemonic = ? where spname like ?", (os_code, f"%{taxid}%"))
         db.commit()
     except Exception as e:
         print(f"update mnemoinc codes failed: {e}")
