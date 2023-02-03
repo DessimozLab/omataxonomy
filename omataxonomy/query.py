@@ -16,6 +16,7 @@ __all__ = ["Taxonomy", "is_taxadb_up_to_date"]
 DB_VERSION = 3
 DEFAULT_DB = os.path.expanduser(os.path.join('~', '.config', 'omataxonomy', 'taxonomy.sqlite'))
 DEFAULT_DUMP_NAME = "omatax.tar.gz"
+DEFAULT_RELEASE_ENV = "DARWIN_GENOMES_PATH"
 
 
 def is_taxadb_up_to_date(dbfile=DEFAULT_DB):
@@ -579,6 +580,18 @@ class Taxonomy:
                            with two columns (CODE and taxid/sciname).
         """
         update_mnemonic_codes(self.db, speclist, extra_file)
+
+
+class EnvReleaseTaxonomy(Taxonomy):
+    def __init__(self, env_var=None):
+        if env_var is None:
+            env_var = DEFAULT_RELEASE_ENV
+        try:
+            db_file = os.path.join(os.environ[env_var], os.path.basename(DEFAULT_DB))
+        except KeyError:
+            raise KeyError(f"Environment variable '{env_var}' is not defined. "
+                           f"Needed for {__class__.__name__} initialization")
+        super().__init__(db_file)
 
 
 if __name__ == "__main__":
