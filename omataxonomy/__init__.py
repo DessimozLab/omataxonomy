@@ -1,4 +1,4 @@
-from .query import Taxonomy, is_taxadb_up_to_date
+from .query import Taxonomy, EnvReleaseTaxonomy, is_taxadb_up_to_date
 from .build_db import build_combined_tarball
 from contextlib import contextmanager
 from importlib import metadata
