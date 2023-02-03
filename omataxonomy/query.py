@@ -15,7 +15,7 @@ __all__ = ["Taxonomy", "is_taxadb_up_to_date"]
 
 DB_VERSION = 3
 DEFAULT_DB = os.path.expanduser(os.path.join('~', '.config', 'omataxonomy', 'taxonomy.sqlite'))
-DEFAULT_DUMP = os.path.expanduser(os.path.join('~', '.config', 'omataxonomy', 'omatax.tar.gz'))
+DEFAULT_DUMP_NAME = "omatax.tar.gz"
 
 
 def is_taxadb_up_to_date(dbfile=DEFAULT_DB):
@@ -50,7 +50,7 @@ class Taxonomy:
 
         if dbfile != DEFAULT_DB and not os.path.exists(self.dbfile):
             print('omataxonomy database not present yet (first time used?)', file=sys.stderr)
-            self.update_taxonomy_database(taxdump_file=DEFAULT_DUMP)
+            self.update_taxonomy_database(taxdump_file=taxdump_file)
 
         if not os.path.exists(self.dbfile):
             raise ValueError("Cannot open omataxonomy database: %s" % self.dbfile)
@@ -69,9 +69,11 @@ class Taxonomy:
 
     def update_taxonomy_database(self, taxdump_file=None):
         """Updates the omataxonomy database by downloading and parsing the latest
-        gtdbtaxdump.tar.gz file from gtdbdump folder.
-        :param None taxdump_file: an alternative location of the gtdbtaxdump.tar.gz file.
+        taxonomies from NCBI and GTDB.
+        :param None taxdump_file: an alternative location of the taxdump.tar.gz file.
         """
+        if taxdump_file is None:
+            taxdump_file = os.path.join(os.path.dirname(self.dbfile), DEFAULT_DUMP_NAME)
         update_db(self.dbfile, targz_file=taxdump_file)
 
     def _connect(self):
@@ -90,7 +92,10 @@ class Taxonomy:
         return conv_all_taxids, conversion
 
     def get_rank(self, taxids):
-        'return a dictionary converting a list of taxids into their corresponding GTDB omataxonomy rank'
+        """return a dictionary converting a list of taxids into their
+        corresponding omataxonomy rank
+
+        :param taxids: an iterable of taxids to be converted"""
 
         all_ids = set(taxids)
         all_ids.discard(None)

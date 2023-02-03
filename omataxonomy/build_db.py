@@ -103,10 +103,8 @@ def generate_table(t, input_folder):
 
 
 def update_db(dbfile, targz_file, remove_tarball=None):
-    basepath = os.path.split(dbfile)[0]
-    if basepath and not os.path.exists(basepath):
-        os.mkdir(basepath)
-
+    os.makedirs(os.path.dirname(dbfile), exist_ok=True)
+    os.makedirs(os.path.dirname(targz_file), exist_ok=True)
     if not os.path.exists(targz_file):
         build_combined_tarball(targz_file)
         if remove_tarball is None:
