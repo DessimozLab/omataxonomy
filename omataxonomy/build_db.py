@@ -34,7 +34,7 @@ def load_tree_from_dump(tar):
 
         if name_type in ("scientific name", "scientific_name"):
             node2taxname[nodename] = taxname
-        if name_type == "genbank common name":
+        if name_type in ("genbank common name", "common_name"):
             node2common[nodename] = taxname
         elif name_type in set(["mnemonic_code", "ncbi_taxid",  "ncbi_organism_name", "genbank equivalent name",
                                "ncbi_genbank_assembly_accession", "anamorph", "genbank synonym", "genbank anamorph",
@@ -62,7 +62,7 @@ def load_tree_from_dump(tar):
         # n.taxname = node2taxname[nodename]
         n.add_feature('taxname', node2taxname[nodename])
         if nodename in node2common:
-            n.add_feature('common_name', node2taxname[nodename])
+            n.add_feature('common_name', node2common[nodename])
         n.add_feature('rank', fields[2].strip())
         if len(fields) > 13:
             n.add_feature("is_ref", fields[13].strip())
@@ -117,9 +117,6 @@ def update_db(dbfile, targz_file, remove_tarball=None):
 
     t, synonyms = load_tree_from_dump(tar)
 
-    prepostorder_full = [int(node.name) for post, node in t.iter_prepostorder()]
-    with open(dbfile + ".full.traverse.pkl", "wb") as fh:
-        pickle.dump(prepostorder_full, fh, 5)
     prepostorder_lineage = [int(node.name) for post, node in t.iter_prepostorder() if node.rank not in (None, "None")]
     with open(dbfile + ".traverse.pkl", "wb") as fh:
         pickle.dump(prepostorder_lineage, fh, 5)

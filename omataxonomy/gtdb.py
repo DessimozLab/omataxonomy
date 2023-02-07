@@ -71,6 +71,7 @@ def write_dump_files(meta, node_dump, names_dump):
                 rank = PREFIX_2_RANK[lev[:3]]
                 write_node(taxid, parent, rank)
                 write_name(taxid, lev, "scientific name")
+                write_name(taxid, lev[3:], "common_name")
                 lev2id[lev] = taxid
             parent = lev2id[lev]
         # add the genome itself
@@ -83,6 +84,10 @@ def write_dump_files(meta, node_dump, names_dump):
         write_name(taxid, genome_meta['ncbi_taxid'], 'ncbi_taxid')
         write_name(taxid, genome_meta["ncbi_organism_name"], "ncbi_organism_name")
         write_name(taxid, genome_meta['ncbi_genbank_assembly_accession'], 'ncbi_genbank_assembly_accession')
+        common_name = genome_meta['ncbi_organism_name']
+        if not common_name.endswith(genome_meta['ncbi_strain_identifiers']):
+            common_name += " " + genome_meta['ncbi_strain_identifiers']
+        write_name(taxid, common_name, "common_name")
 
 
 def download_gtdb_release(rel=None, dom=None, target_folder=None):

@@ -31,6 +31,13 @@ class TaxonomyTest(unittest.TestCase):
         self.assertEqual("root; d__Bacteria; p__Myxococcota_A; c__UBA796; o__UBA796; f__GCA-2862545; g__M1803; s__M1803 sp006226595; GB_GCA_006226595.1".split('; '),
                          res)
 
+    def test_gtdb_common_name(self):
+        tax = Taxonomy()
+        spname = "GB_GCA_002731275.1"
+        taxid = tax.get_name_translator([spname])[spname][0]
+        common = tax.get_common_names([taxid])[taxid]
+        self.assertEqual("Deltaproteobacteria bacterium NP119", common)
+
 
 class EnvBasedTaxonomyTest(unittest.TestCase):
     def test_raises_with_env_set_to_inexisting_value(self):
