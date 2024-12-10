@@ -1,6 +1,7 @@
 import numpy
 import csv
 import re
+import gzip
 import tarfile
 from urllib.request import urlretrieve
 import logging
@@ -14,7 +15,8 @@ PREFIX_2_RANK = {"d__": "superkingdom", "p__": "phylum", "c__": "class", "o__": 
 
 
 def _load_meta(fn):
-    with open(fn, 'rt', newline="") as fh:
+    _open = gzip.open if fn.endswith('.gz') else open
+    with _open(fn, 'rt', newline="") as fh:
         reader = csv.DictReader(fh, dialect="excel-tab")
         meta = {row['accession']: row for row in reader}
     return meta
@@ -108,17 +110,12 @@ def download_gtdb_release(rel=None, dom=None, target_folder=None):
 
 def download_dom(dom, rel):
     logger.info(f"download tax release '{rel}' from {GTDB_DOWNLOAD_BASE_URL}")
-    files = [f"{dom}{fn}" for fn in ("_metadata.tar.gz",)]
+    files = [f"{dom}{fn}" for fn in ("_metadata.tsv.gz",)]
     extracted_files = []
     for file in files:
         url = f"{GTDB_DOWNLOAD_BASE_URL}/{rel}/{file}"
         urlretrieve(url, file)
-        tar_fh = tarfile.open(file)
-        tar_files = tar_fh.getmembers()
-        tar_fh.extractall(members=tar_files)
-        extracted_files.extend([z.name for z in tar_files])
-        tar_fh.close()
-    return extracted_files[0]
+    return file
 
 
 if __name__ == "__main__":
