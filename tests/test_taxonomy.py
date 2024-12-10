@@ -28,7 +28,7 @@ class TaxonomyTest(unittest.TestCase):
         tax = Taxonomy()
         taxid = tax.get_name_translator(['GCA_006226595.1'])
         res = tax.get_name_lineage(['GCA_006226595.1'])['GCA_006226595.1']
-        self.assertEqual("root; d__Bacteria; p__Myxococcota_A; c__UBA796; o__UBA796; f__GCA-2862545; g__M1803; s__M1803 sp006226595; GB_GCA_006226595.1".split('; '),
+        self.assertEqual("root; d__Bacteria; p__Myxococcota; c__UBA796; o__UBA796; f__GCA-2862545; g__M1803; s__M1803 sp006226595; GB_GCA_006226595.1".split('; '),
                          res)
 
     def test_gtdb_common_name(self):
