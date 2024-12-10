@@ -44,7 +44,7 @@ class Taxonomy:
         if not dbfile:
             self.dbfile = DEFAULT_DB
         else:
-            self.dbfile = dbfile
+            self.dbfile = os.path.realpath(dbfile)
 
         if taxdump_file:
             self.update_taxonomy_database(taxdump_file)
