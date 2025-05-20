@@ -8,10 +8,11 @@ import requests
 from itertools import chain
 from pathlib import Path
 from hashlib import md5
+from logging import getLogger
 from ete4 import Tree
 from tqdm import tqdm
 from .gtdb import download_gtdb_release
-
+logger = getLogger(__name__)
 
 def load_tree_from_dump(tar):
     parent2child = {}
@@ -20,7 +21,7 @@ def load_tree_from_dump(tar):
     synonyms = set()
     name2rank = {}
     node2common = {}
-    print("Loading node names...")
+    logger.info("Loading node names...")
     unique_nocase_synonyms = set()
     for line in tar.extractfile("names.dmp"):
         line = str(line.decode())
@@ -48,10 +49,10 @@ def load_tree_from_dump(tar):
                 unique_nocase_synonyms.add(synonym_key)
                 synonyms.add((nodename, taxname))
 
-    print(len(node2taxname), "names loaded.")
-    print(len(synonyms), "synonyms loaded.")
+    logger.info(f"{len(node2taxname)} names loaded.")
+    logger.info(f"{len(synonyms)} synonyms loaded.")
 
-    print("Loading nodes...")
+    logger.info("Loading nodes...")
     for line in tar.extractfile("nodes.dmp"):
         line = str(line.decode())
         fields = line.split("|")
@@ -68,9 +69,9 @@ def load_tree_from_dump(tar):
             n.add_prop("is_ref", fields[13].strip())
         parent2child[nodename] = parentname
         name2node[nodename] = n
-    print(len(name2node), "nodes loaded.")
+    logger.info(f"{len(name2node)} nodes loaded.")
 
-    print("Linking nodes...")
+    logger.info("Linking nodes...")
     for node in name2node:
         if node == "1":
             t = name2node[node]
@@ -78,15 +79,15 @@ def load_tree_from_dump(tar):
             parent = parent2child[node]
             parent_node = name2node[parent]
             parent_node.add_child(name2node[node])
-    print("Tree is loaded.")
+    logger.debug("Tree is loaded.")
     return t, synonyms
 
 
 def generate_table(t, input_folder):
     with open(os.path.join(input_folder, "taxa.tab"), "w") as OUT:
         for j, n in enumerate(t.traverse()):
-            if j % 1000 == 0:
-                print("\r", j, "generating entries...", end=' ')
+            if j % 30000 == 0:
+                logger.debug(f"{j} generating entries... ")
             temp_node = n
             track = []
             while temp_node:
@@ -129,7 +130,7 @@ def update_db(dbfile, targz_file, remove_tarball=None):
     with open(dbfile + ".traverse.pkl", "wb") as fh:
         pickle.dump(prepostorder_lineage, fh, 5)
 
-    print("Updating database: %s ..." % dbfile)
+    logger.info("Updating database: %s ..." % dbfile)
     with tempfile.TemporaryDirectory() as tab_dir:
         generate_table(t, tab_dir)
 
@@ -162,8 +163,8 @@ def download_file(url, filepath, chunk_size=8192):
 
 def upload_data(dbfile, input_folder):
     from .query import DB_VERSION
-    print()
-    print('Uploading to', dbfile)
+
+    logger.info('Uploading to', dbfile)
     basepath = os.path.split(dbfile)[0]
     if basepath and not os.path.exists(basepath):
         os.mkdir(basepath)
@@ -194,7 +195,6 @@ def upload_data(dbfile, input_folder):
     """
     for cmd in create_cmd.split(';'):
         db.execute(cmd)
-    print()
 
     db.execute("INSERT INTO stats (version) VALUES (%d);" % DB_VERSION)
     db.commit()
@@ -206,7 +206,7 @@ def upload_data(dbfile, input_folder):
                 db.execute("INSERT INTO synonym (taxid, spname) VALUES (?, ?);", (taxid, spname))
         db.commit()
     except FileNotFoundError:
-        print("no synonym table found. skipping", file=sys.stderr)
+        logger.warning("no synonym table found. skipping")
 
     try:
         with open(os.path.join(input_folder, "merged.tab"), "rt") as fh:
@@ -215,7 +215,7 @@ def upload_data(dbfile, input_folder):
                 db.execute("INSERT INTO merged (taxid_old, taxid_new) VALUES (?, ?);", (taxid_old, taxid_new))
         db.commit()
     except FileNotFoundError:
-        print("no merged.tab found. skipping", file=sys.stderr)
+        logger.warning("no merged.tab found. skipping")
 
     with open(os.path.join(input_folder, "taxa.tab"), "rt") as fh:
         for i, line in tqdm(enumerate(fh), desc="inserting taxids"):
@@ -224,7 +224,7 @@ def upload_data(dbfile, input_folder):
                        (taxid, parentid, spname, common, rank, "", is_ref, lineage))
     db.commit()
     update_mnemonic_codes(db)
-    print("\rdatabase created", file=sys.stderr)
+    logger.info("database created")
 
 
 def update_mnemonic_codes(db, speclist=None, extra_file=None):
@@ -245,7 +245,7 @@ def update_mnemonic_codes(db, speclist=None, extra_file=None):
                 db.execute("UPDATE species SET mnemonic = ? where spname like ?", (os_code, f"%{taxid}%"))
         db.commit()
     except Exception as e:
-        print(f"update mnemoinc codes failed: {e}")
+        logger.exception("update mnemoinc codes failed")
         db.rollback()
 
 
