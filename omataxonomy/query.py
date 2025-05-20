@@ -7,7 +7,7 @@ import pickle
 from collections import defaultdict, Counter
 import sqlite3
 import warnings
-from ete3 import PhyloTree
+from ete4 import PhyloTree
 from .build_db import update_db, update_mnemonic_codes
 
 __all__ = ["Taxonomy", "is_taxadb_up_to_date"]
@@ -287,7 +287,7 @@ class Taxonomy:
             if return_tree:
                 return tree
             elif intermediate_nodes:
-                return list(map(int, [n.name for n in tree.get_descendants()]))
+                return list(map(int, [n.name for n in tree.descendants()]))
             else:
                 return map(int, [n.name for n in tree])
 
@@ -361,8 +361,8 @@ class Taxonomy:
                     if elem not in elem2node:
                         node = elem2node.setdefault(elem, PhyloTree())
                         node.name = str(elem)
-                        node.taxid = elem
-                        node.add_feature("rank", str(id2rank.get(int(elem), "no rank")))
+                        node.add_prop('taxid', int(elem))
+                        node.add_prop("rank", str(id2rank.get(int(elem), "no rank")))
                     else:
                         node = elem2node[elem]
                     track.append(node)
@@ -373,14 +373,14 @@ class Taxonomy:
                 for elem in track:
                     if parent and elem not in parent.children:
                         parent.add_child(elem)
-                    if rank_limit and elem.rank == rank_limit:
+                    if rank_limit and elem.props.get('rank') == rank_limit:
                         break
                     parent = elem
             root = elem2node[1]
 
         # remove onechild-nodes
         if not intermediate_nodes:
-            for n in root.get_descendants():
+            for n in root.descendants():
                 if len(n.children) == 1 and int(n.name) not in taxids:
                     n.delete(prevent_nondicotomic=False)
 
@@ -392,7 +392,7 @@ class Taxonomy:
         if collapse_subspecies:
             to_detach = []
             for node in tree.traverse():
-                if node.rank == "species":
+                if node.props.get('rank') == "species":
                     to_detach.extend(node.children)
             for n in to_detach:
                 n.detach()
@@ -417,8 +417,8 @@ class Taxonomy:
         taxids = set()
         for n in t.traverse():
             try:
-                tid = int(getattr(n, taxid_attr))
-            except (ValueError,AttributeError):
+                tid = int(getattr(n, taxid_attr, n.props.get(taxid_attr)))
+            except (ValueError, AttributeError, TypeError):
                 pass
             else:
                 taxids.add(tid)
@@ -443,29 +443,29 @@ class Taxonomy:
 
         for n in t.traverse('postorder'):
             try:
-                node_taxid = int(getattr(n, taxid_attr))
-            except (ValueError, AttributeError):
+                node_taxid = int(getattr(n, taxid_attr, n.props.get(taxid_attr)))
+            except (ValueError, AttributeError, TypeError):
                 node_taxid = None
 
-            n.add_feature('taxid', node_taxid)
+            n.add_prop('taxid', node_taxid)
             if node_taxid:
                 if node_taxid in merged_conversion:
                     node_taxid = merged_conversion[node_taxid]
-                n.add_features(sci_name=tax2name.get(node_taxid, getattr(n, taxid_attr, '')),
+                n.add_props(sci_name=tax2name.get(node_taxid, getattr(n, taxid_attr, n.props.get(taxid_attr, ''))),
                             common_name=tax2common_name.get(node_taxid, ''),
                             lineage=tax2track.get(node_taxid, []),
                             rank=tax2rank.get(node_taxid, 'Unknown'),
                             named_lineage=[tax2name.get(tax, str(tax)) for tax in tax2track.get(node_taxid, [])])
-            elif n.is_leaf():
-                n.add_features(sci_name=getattr(n, taxid_attr, 'NA'),
+            elif n.is_leaf:
+                n.add_props(sci_name=getattr(n, taxid_attr, n.props.get(taxid_attr, 'NA')),
                             common_name='',
                             lineage=[],
                             rank='Unknown',
                             named_lineage=[])
             else:
-                lineage = self._common_lineage([lf.lineage for lf in n2leaves[n]])
+                lineage = self._common_lineage([lf.props.get('lineage') for lf in n2leaves[n]])
                 ancestor = lineage[-1]
-                n.add_features(sci_name=tax2name.get(ancestor, str(ancestor)),
+                n.add_props(sci_name=tax2name.get(ancestor, str(ancestor)),
                             common_name=tax2common_name.get(ancestor, ''),
                             taxid=ancestor,
                             lineage=lineage,
@@ -531,8 +531,8 @@ class Taxonomy:
 
         unknown = set()
         for leaf in t.iter_leaves():
-            if leaf.sci_name.lower() != "unknown":
-                lineage = taxa_lineages[leaf.taxid]
+            if leaf.props.get('sci_name', 'unknown').lower() != "unknown":
+                lineage = taxa_lineages[leaf.props.get('taxid')]
                 for index, tax in enumerate(lineage):
                     tax2node[tax].add(leaf)
             else:
@@ -593,41 +593,3 @@ class EnvReleaseTaxonomy(Taxonomy):
                            f"Needed for {__class__.__name__} initialization")
         super().__init__(db_file)
 
-
-if __name__ == "__main__":
-    # from .. import PhyloTree
-    tax = Taxonomy()
-    #tax.update_taxonomy_database(DEFAULT_DUMP)
-
-    descendants = tax.get_descendant_taxa('c__Thorarchaeia', collapse_subspecies=True, return_tree=True)
-    print(descendants.write(features=None))
-    print(descendants.get_ascii(attributes=['sci_name', 'taxid', 'rank']))
-
-    import itertools
-    taxids = list(itertools.chain.from_iterable(
-        tax.get_name_translator(["p__Hydrothermarchaeota", "o__Peptococcales", "f__Korarchaeaceae", "GB_GCA_011358815.1"])
-        .values()
-    ))
-    tree = tax.get_topology(taxids, intermediate_nodes=True, collapse_subspecies=True, annotate=True)
-    print(tree.get_ascii(attributes=["taxid", "sci_name", "rank"]))
-
-    tree = PhyloTree('((c__Thorarchaeia, c__Lokiarchaeia), s__Caballeronia udeis);',
-                     sp_naming_function=lambda name: tax.get_name_translator([name])[name][0])
-    tax2name, tax2track, tax2rank = tax.annotate_tree(tree, taxid_attr="species")
-    print(tree.get_ascii(attributes=["taxid", "name", "sci_name", "rank"]))
-
-    tree = PhyloTree('(RS_GCF_006228565.1, (Homo sapiens, Gallus gallus));',
-                     sp_naming_function=lambda name: tax.get_name_translator([name])[name][0])
-    tax2name, tax2track, tax2rank = tax.annotate_tree(tree, taxid_attr="species")
-    print(tree.get_ascii(attributes=["taxid", "name", "sci_name", "rank"]))
-
-    print(tax.get_name_lineage(['RS_GCF_006228565.1', 'GB_GCA_001515945.1', "Homo sapiens", "f__Leptotrichiaceae", "Gallus"]))
-
-    print(tax.get_mnemonic_names([9606, 43715, 658031, 73382, 9823]))
-
-    lin = tax.get_lineage(10090)
-    t2n = tax.get_taxid_translator(lin)
-    print([t2n[x] for x in lin])
-
-    #tax.update_mnemonic_codes()
-    print(tax.get_mnemonic_translator(['MOUSE', 'YEAST', 'ASHGO', 'CAPSP', ]))

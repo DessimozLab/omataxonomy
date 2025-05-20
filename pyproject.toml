@@ -8,10 +8,11 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.9"
-ete3 = "^3.1.2"
-numpy = ">=1.26.4,<3.0.0"
+ete4 = "^4.3.0"
+numpy = "^2.0.0"
 tqdm = "^4.64.1"
 six = "^1.16.0"
+requests = "^2.32.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.1"

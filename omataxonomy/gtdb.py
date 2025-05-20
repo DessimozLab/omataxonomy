@@ -2,8 +2,7 @@ import numpy
 import csv
 import re
 import gzip
-import tarfile
-from urllib.request import urlretrieve
+from .build_db import download_file
 import logging
 from hashlib import md5
 
@@ -109,12 +108,10 @@ def download_gtdb_release(rel=None, dom=None, target_folder=None):
 
 
 def download_dom(dom, rel):
-    logger.info(f"download tax release '{rel}' from {GTDB_DOWNLOAD_BASE_URL}")
-    files = [f"{dom}{fn}" for fn in ("_metadata.tsv.gz",)]
-    extracted_files = []
-    for file in files:
-        url = f"{GTDB_DOWNLOAD_BASE_URL}/{rel}/{file}"
-        urlretrieve(url, file)
+    logger.info(f"download tax release '{rel}' for '{dom}' from {GTDB_DOWNLOAD_BASE_URL}")
+    file = f"{dom}_metadata.tsv.gz"
+    url = f"{GTDB_DOWNLOAD_BASE_URL}/{rel}/{file}"
+    download_file(url, file)
     return file
 
 

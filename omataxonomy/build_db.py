@@ -4,12 +4,12 @@ import sqlite3
 import sys
 import tarfile
 import tempfile
+import requests
 from itertools import chain
-from ete3 import Tree
-from urllib.request import urlretrieve
-from tqdm import tqdm
 from pathlib import Path
 from hashlib import md5
+from ete4 import Tree
+from tqdm import tqdm
 from .gtdb import download_gtdb_release
 
 
@@ -60,12 +60,12 @@ def load_tree_from_dump(tar):
         n = Tree()
         n.name = nodename
         # n.taxname = node2taxname[nodename]
-        n.add_feature('taxname', node2taxname[nodename])
+        n.add_prop('taxname', node2taxname[nodename])
         if nodename in node2common:
-            n.add_feature('common_name', node2common[nodename])
-        n.add_feature('rank', fields[2].strip())
+            n.add_prop('common_name', node2common[nodename])
+        n.add_prop('rank', fields[2].strip())
         if len(fields) > 13:
-            n.add_feature("is_ref", fields[13].strip())
+            n.add_prop("is_ref", fields[13].strip())
         parent2child[nodename] = parentname
         name2node[nodename] = n
     print(len(name2node), "nodes loaded.")
@@ -90,17 +90,25 @@ def generate_table(t, input_folder):
             temp_node = n
             track = []
             while temp_node:
-                temp_rank = temp_node.rank
+                temp_rank = temp_node.props.get('rank')
                 if temp_rank not in (None, "None"):
                     track.append(temp_node.name)
                 temp_node = temp_node.up
             if n.up:
                 print('\t'.join(
-                    [n.name, n.up.name, n.taxname, getattr(n, "common_name", ""), n.rank,
-                     getattr(n, "is_ref", ""), ','.join(track)]), file=OUT)
+                    [n.name, n.up.name, n.props.get('taxname', ""),
+                     getattr(n, "common_name", n.props.get("common_name", "")),
+                     n.props.get('rank', ''),
+                     getattr(n, "is_ref", ""),
+                     ','.join(track)]
+                ), file=OUT)
             else:
-                print('\t'.join([n.name, "", n.taxname, getattr(n, "common_name", ""), n.rank,
-                                 getattr(n, "is_ref", ""), ','.join(track)]), file=OUT)
+                print('\t'.join([n.name, "", n.props.get('taxname', ''),
+                                 getattr(n, "common_name", n.props.get("common_name", "")),
+                                 n.props.get('rank', ''),
+                                 getattr(n, "is_ref", n.props.get('is_ref', '')),
+                                 ','.join(track)]
+                                ), file=OUT)
 
 
 def update_db(dbfile, targz_file, remove_tarball=None):
@@ -117,7 +125,7 @@ def update_db(dbfile, targz_file, remove_tarball=None):
 
     t, synonyms = load_tree_from_dump(tar)
 
-    prepostorder_lineage = [int(node.name) for post, node in t.iter_prepostorder() if node.rank not in (None, "None")]
+    prepostorder_lineage = [int(node.name) for post, node in t.iter_prepostorder() if node.props.get('rank') not in (None, "None")]
     with open(dbfile + ".traverse.pkl", "wb") as fh:
         pickle.dump(prepostorder_lineage, fh, 5)
 
@@ -140,6 +148,16 @@ def update_db(dbfile, targz_file, remove_tarball=None):
 
     if remove_tarball:
         os.remove(targz_file)
+
+
+def download_file(url, filepath, chunk_size=8192):
+    if filepath is None:
+        filepath = url.rsplit('/', 1)[1]
+    with requests.get(url, stream=True) as r:
+        r.raise_for_status()
+        with open(filepath, 'wb') as fh:
+            for chunk in r.iter_content(chunk_size=chunk_size):
+                fh.write(chunk)
 
 
 def upload_data(dbfile, input_folder):
@@ -233,9 +251,9 @@ def update_mnemonic_codes(db, speclist=None, extra_file=None):
 
 def download_ncbi_taxonomy():
     md5_file = "taxdump.tar.gz.md5"
-    urlretrieve("https://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz.md5", md5_file)
-    with open(md5_file, "r") as md5_file:
-        md5_check = md5_file.readline().split()[0]
+    res = requests.get("https://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz.md5")
+    res.raise_for_status()
+    md5_check = res.text.split()[0]
 
     targz_file = Path("taxdump.tar.gz")
     if targz_file.exists():
@@ -244,9 +262,9 @@ def download_ncbi_taxonomy():
             while chunk := fh.read(8192):
                 local_md5.update(chunk)
         if local_md5.hexdigest() != md5_check:
-            urlretrieve("http://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz", targz_file)
+            download_file("http://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz", targz_file)
     else:
-        urlretrieve("http://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz", targz_file)
+        download_file("http://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz", targz_file)
     return targz_file
 
 
