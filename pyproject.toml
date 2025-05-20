@@ -1,13 +1,13 @@
 [tool.poetry]
 name = "omataxonomy"
-version = "0.3.2"
+version = "0.4.0"
 description = "Package to work with combined NCBI and GTDB taxonomy"
 authors = ["Adrian Altenhoff <adrian.altenhoff@inf.ethz.ch>"]
 license = "GPL-3.0"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = ">=3.9,<3.13"   # numpy not yet for 3.13 available as wheel
 ete4 = "^4.3.0"
 numpy = "^2.0.0"
 tqdm = "^4.64.1"
