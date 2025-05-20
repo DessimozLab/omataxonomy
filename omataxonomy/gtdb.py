@@ -2,7 +2,6 @@ import numpy
 import csv
 import re
 import gzip
-from .build_db import download_file
 import logging
 from hashlib import md5
 
@@ -108,6 +107,7 @@ def download_gtdb_release(rel=None, dom=None, target_folder=None):
 
 
 def download_dom(dom, rel):
+    from .build_db import download_file
     logger.info(f"download tax release '{rel}' for '{dom}' from {GTDB_DOWNLOAD_BASE_URL}")
     file = f"{dom}_metadata.tsv.gz"
     url = f"{GTDB_DOWNLOAD_BASE_URL}/{rel}/{file}"
