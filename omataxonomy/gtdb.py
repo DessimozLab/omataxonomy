@@ -9,7 +9,7 @@ from hashlib import md5
 
 logger = logging.getLogger(__name__)
 
-GTDB_DOWNLOAD_BASE_URL = "https://data.gtdb.ecogenomic.org/releases"
+GTDB_DOWNLOAD_BASE_URL = "https://data.ace.uq.edu.au/public/gtdb/data/releases"
 PREFIX_2_RANK = {"d__": "superkingdom", "p__": "phylum", "c__": "class", "o__": "order",
                  "f__": "family", "g__": "genus", "s__": "species"}
 
