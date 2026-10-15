@@ -1,22 +1,28 @@
-[tool.poetry]
+[project]
 name = "omataxonomy"
 version = "0.4.0"
 description = "Package to work with combined NCBI and GTDB taxonomy"
-authors = ["Adrian Altenhoff <adrian.altenhoff@inf.ethz.ch>"]
-license = "GPL-3.0"
+authors = [{ name = "Adrian Altenhoff", email = "adrian.altenhoff@inf.ethz.ch" }]
+license = "GPL-3.0-only"
+license-files = ["LICENSE.txt"]
 readme = "README.md"
+requires-python = ">=3.9,<3.13"   # numpy not yet for 3.13 available as wheel
+dependencies = [
+    "ete4>=4.3.0,<5",
+    "numpy>=2.0.0,<3",
+    "tqdm>=4.64.1,<5",
+    "six>=1.16.0,<2",
+    "requests>=2.32.3,<3",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.9,<3.13"   # numpy not yet for 3.13 available as wheel
-ete4 = "^4.3.0"
-numpy = "^2.0.0"
-tqdm = "^4.64.1"
-six = "^1.16.0"
-requests = "^2.32.3"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^7.2.1"
+[dependency-groups]
+dev = [
+    "pytest>=7.2.1,<8",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.9,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""
