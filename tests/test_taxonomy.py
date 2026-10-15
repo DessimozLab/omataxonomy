@@ -19,16 +19,16 @@ class TaxonomyTest(unittest.TestCase):
     def test_stable_gtdb_taxids(self):
         expected = {'f__Leptotrichiaceae': [-769982259],
                     'GB_GCA_001515945.1': [-1326969492],
-                    's__Moorella thermoacetica': [-1120457739]}
+                    's__Nitrosococcus oceani': [-1292655344]}
         tax = Taxonomy()
-        taxids = tax.get_name_translator(["f__Leptotrichiaceae", "GB_GCA_001515945.1", "s__Moorella thermoacetica"])
+        taxids = tax.get_name_translator(["f__Leptotrichiaceae", "GB_GCA_001515945.1", "s__Nitrosococcus oceani"])
         self.assertEqual(taxids, expected)
 
     def test_lineage_from_acc(self):
         tax = Taxonomy()
-        taxid = tax.get_name_translator(['GCA_006226595.1'])
-        res = tax.get_name_lineage(['GCA_006226595.1'])['GCA_006226595.1']
-        self.assertEqual("root; d__Bacteria; p__Myxococcota; c__UBA796; o__UBA796; f__GCA-2862545; g__M1803; s__M1803 sp006226595; GB_GCA_006226595.1".split('; '),
+        res = tax.get_name_lineage(['GCA_000012805.1'])['GCA_000012805.1']
+        self.assertEqual("root; d__Bacteria; p__Pseudomonadota; c__Gammaproteobacteria; o__Nitrosococcales; "
+                         "f__Nitrosococcaceae; g__Nitrosococcus; s__Nitrosococcus oceani; RS_GCF_000012805.1".split('; '),
                          res)
 
     def test_gtdb_common_name(self):
@@ -53,4 +53,5 @@ class EnvBasedTaxonomyTest(unittest.TestCase):
             pass
         self.assertTrue(mocked_updated_db.called)
         root = os.path.realpath("/tmp/test")
-        mocked_updated_db.assert_called_with(f"{root}/taxonomy.sqlite", targz_file=f"{root}/omatax.tar.gz")
+        mocked_updated_db.assert_called_with(f"{root}/taxonomy.sqlite", targz_file=f"{root}/omatax.tar.gz",
+                                             gtdb_release=None)
