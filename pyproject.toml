@@ -6,7 +6,7 @@ authors = [{ name = "Adrian Altenhoff", email = "adrian.altenhoff@inf.ethz.ch" }
 license = "GPL-3.0-only"
 license-files = ["LICENSE.txt"]
 readme = "README.md"
-requires-python = ">=3.9,<3.13"   # numpy not yet for 3.13 available as wheel
+requires-python = ">=3.9,<3.16"
 dependencies = [
     "ete4>=4.3.0,<5",
     "numpy>=2.0.0,<3",
