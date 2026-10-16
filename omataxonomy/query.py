@@ -75,6 +75,7 @@ class Taxonomy:
     def update_taxonomy_database(self, taxdump_file=None, gtdb_release=None):
         """Updates the omataxonomy database by downloading and parsing the latest
         taxonomies from NCBI and GTDB.
+
         :param None taxdump_file: an alternative location of the taxdump.tar.gz file.
         :param None gtdb_release: GTDB release to use (e.g. 232). Defaults to
             the latest release. Ignored if taxdump_file already exists.
@@ -411,6 +412,7 @@ class Taxonomy:
     def annotate_tree(self, t, taxid_attr="name", tax2name=None, tax2track=None, tax2rank=None):
         """Annotate a tree containing taxids as leaf names by adding the  'taxid',
         'sci_name', 'lineage', 'named_lineage' and 'rank' additional attributes.
+
         :param t: a Tree (or Tree derived) instance.
         :param name taxid_attr: Allows to set a custom node attribute
             containing the taxid number associated to each node (i.e.
