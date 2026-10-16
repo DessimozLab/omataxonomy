@@ -23,4 +23,5 @@ installation
 database
 tutorial
 api
+changelog
 ```
