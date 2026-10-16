@@ -112,11 +112,11 @@ def generate_table(t, input_folder):
                                 ), file=OUT)
 
 
-def update_db(dbfile, targz_file, remove_tarball=None):
+def update_db(dbfile, targz_file, remove_tarball=None, gtdb_release=None):
     os.makedirs(os.path.dirname(dbfile), exist_ok=True)
     os.makedirs(os.path.dirname(targz_file), exist_ok=True)
     if not os.path.exists(targz_file):
-        build_combined_tarball(targz_file)
+        build_combined_tarball(targz_file, gtdb_release=gtdb_release)
         if remove_tarball is None:
             remove_tarball = True
     try:
@@ -164,7 +164,7 @@ def download_file(url, filepath, chunk_size=8192):
 def upload_data(dbfile, input_folder):
     from .query import DB_VERSION
 
-    logger.info('Uploading to', dbfile)
+    logger.info('Uploading to %s', dbfile)
     basepath = os.path.split(dbfile)[0]
     if basepath and not os.path.exists(basepath):
         os.mkdir(basepath)
@@ -268,12 +268,12 @@ def download_ncbi_taxonomy():
     return targz_file
 
 
-def build_combined_tarball(target):
+def build_combined_tarball(target, gtdb_release=None):
     from . import cwd
     with tempfile.TemporaryDirectory() as dwnfolder:
         with cwd(dwnfolder):
             ncbi_tar = download_ncbi_taxonomy()
-            download_gtdb_release(target_folder=dwnfolder)
+            download_gtdb_release(rel=gtdb_release, target_folder=dwnfolder)
             with tarfile.open(ncbi_tar, 'r') as tarfh:
                 with open(os.path.join(dwnfolder, "names.dmp"), 'wb') as names_fh, \
                      open(os.path.join(dwnfolder, "gtdbnames.dmp"), 'rb') as gtdb_fh:

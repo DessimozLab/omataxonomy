@@ -39,7 +39,11 @@ def is_taxadb_up_to_date(dbfile=DEFAULT_DB):
 
 class Taxonomy:
 
-    def __init__(self, dbfile=None, taxdump_file=None, memory=False):
+    def __init__(self, dbfile=None, taxdump_file=None, memory=False, gtdb_release=None):
+        """
+        :param gtdb_release: GTDB release (e.g. 232) used if the database
+            needs to be built. Defaults to the latest release.
+        """
 
         if not dbfile:
             self.dbfile = DEFAULT_DB
@@ -47,11 +51,11 @@ class Taxonomy:
             self.dbfile = os.path.realpath(dbfile)
 
         if taxdump_file:
-            self.update_taxonomy_database(taxdump_file)
+            self.update_taxonomy_database(taxdump_file, gtdb_release=gtdb_release)
 
         if dbfile != DEFAULT_DB and not os.path.exists(self.dbfile):
             print('omataxonomy database not present yet (first time used?)', file=sys.stderr)
-            self.update_taxonomy_database(taxdump_file=taxdump_file)
+            self.update_taxonomy_database(taxdump_file=taxdump_file, gtdb_release=gtdb_release)
 
         if not os.path.exists(self.dbfile):
             raise ValueError("Cannot open omataxonomy database: %s" % self.dbfile)
@@ -61,21 +65,23 @@ class Taxonomy:
 
         if not is_taxadb_up_to_date(self.dbfile):
             print('omataxonomy database format is outdated. Upgrading', file=sys.stderr)
-            self.update_taxonomy_database(taxdump_file)
+            self.update_taxonomy_database(taxdump_file, gtdb_release=gtdb_release)
 
         if memory:
             filedb = self.db
             self.db = sqlite3.connect(':memory:')
             filedb.backup(self.db)
 
-    def update_taxonomy_database(self, taxdump_file=None):
+    def update_taxonomy_database(self, taxdump_file=None, gtdb_release=None):
         """Updates the omataxonomy database by downloading and parsing the latest
         taxonomies from NCBI and GTDB.
         :param None taxdump_file: an alternative location of the taxdump.tar.gz file.
+        :param None gtdb_release: GTDB release to use (e.g. 232). Defaults to
+            the latest release. Ignored if taxdump_file already exists.
         """
         if taxdump_file is None:
             taxdump_file = os.path.join(os.path.dirname(self.dbfile), DEFAULT_DUMP_NAME)
-        update_db(self.dbfile, targz_file=taxdump_file)
+        update_db(self.dbfile, targz_file=taxdump_file, gtdb_release=gtdb_release)
 
     def _connect(self):
         self.db = sqlite3.connect(self.dbfile)

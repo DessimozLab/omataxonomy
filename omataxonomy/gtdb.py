@@ -91,6 +91,11 @@ def write_dump_files(meta, node_dump, names_dump):
 
 
 def download_gtdb_release(rel=None, dom=None, target_folder=None):
+    """Download the GTDB metadata of a release and convert it to dump files.
+
+    :param rel: GTDB release, e.g. 232, "232", "r232" or "214.1".
+        Defaults to "latest".
+    """
     from . import cwd
     if dom is None:
         dom = ["ar53", "bac120"]
@@ -98,7 +103,7 @@ def download_gtdb_release(rel=None, dom=None, target_folder=None):
         dom = [dom]
     if rel is None:
         rel = "latest"
-    if target_folder is not None:
+    if target_folder is None:
         target_folder = "./"
     with cwd(target_folder):
         for d in dom:
@@ -106,11 +111,22 @@ def download_gtdb_release(rel=None, dom=None, target_folder=None):
             build_tax_dump(meta_fn)
 
 
+def metadata_url(dom, rel):
+    rel = str(rel)
+    if rel == "latest":
+        return f"{GTDB_DOWNLOAD_BASE_URL}/latest/{dom}_metadata.tsv.gz"
+    m = re.fullmatch(r"(?:release|r)?(?P<major>\d+)(?:\.(?P<minor>\d+))?", rel)
+    if m is None:
+        raise ValueError(f"invalid GTDB release: '{rel}'")
+    major, minor = m.group('major'), m.group('minor') or "0"
+    return f"{GTDB_DOWNLOAD_BASE_URL}/release{major}/{major}.{minor}/{dom}_metadata_r{major}.tsv.gz"
+
+
 def download_dom(dom, rel):
     from .build_db import download_file
-    logger.info(f"download tax release '{rel}' for '{dom}' from {GTDB_DOWNLOAD_BASE_URL}")
+    url = metadata_url(dom, rel)
+    logger.info(f"download tax release '{rel}' for '{dom}' from {url}")
     file = f"{dom}_metadata.tsv.gz"
-    url = f"{GTDB_DOWNLOAD_BASE_URL}/{rel}/{file}"
     download_file(url, file)
     return file
 
