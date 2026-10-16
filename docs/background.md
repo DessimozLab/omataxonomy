@@ -81,10 +81,15 @@ database:
   NCBI's domain and `d__Bacteria` is GTDB's.
 - **Every GTDB genome becomes a leaf** of rank `subspecies` below its GTDB
   species. Its name is the GTDB accession (e.g. `RS_GCF_000012805.1`).
-- GTDB taxa and genomes get **stable negative taxids**. These are computed by
-  hashing the name (for genomes, the accession number), so a taxon keeps its
-  taxid in every release in which its name stays the same. Hash collisions
-  are resolved deterministically.
+- GTDB taxa and genomes get **negative taxids**. These are computed by
+  hashing the name (for genomes, the accession number), so a database built
+  again from the same GTDB release always has the same taxids, and a taxon
+  usually keeps its taxid in later releases as long as its name stays the
+  same. This is not guaranteed, though: when two names hash to the same
+  value, only one of them gets the plain hash, and which one depends on all
+  the names in the release. Store names or accessions rather than GTDB
+  taxids if your data has to outlive a GTDB release, and translate them
+  again for each release.
 - Genomes can also be found by their GenBank accession, by their NCBI
   organism name, and by the NCBI taxid recorded for them in the GTDB
   metadata (as the synonym `ncbi_taxid:<taxid>`):

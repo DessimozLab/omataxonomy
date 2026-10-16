@@ -282,12 +282,19 @@ Genomes and NCBI taxa can be mixed in one tree. As explained in
 
 ```
 
-`annotate_tree` also returns three dictionaries that map each taxid in the
-tree to its name, its lineage and its rank. They are handy for further
-processing:
+`annotate_tree` also returns three dictionaries. `tax2name` and `tax2rank`
+map the taxids of the tree and of all their ancestors to names and ranks.
+`tax2track` only contains the lineages of the taxids that were already in
+the tree, i.e. here of the leaves. For an internal node whose taxon was
+inferred, such as the root or `p__Asgardarchaeota` above, read the lineage
+from the node's `lineage` property:
 
 ```pycon
 >>> tax2rank[-72785574], tax2name[-72785574]
 ('class', 'c__Lokiarchaeia')
+>>> tax.translate_to_names(tax2track[-72785574])
+['root', 'd__Archaea', 'p__Asgardarchaeota', 'c__Lokiarchaeia']
+>>> tax2name[-2035759834], tax2rank[-2035759834], -2035759834 in tax2track
+('p__Asgardarchaeota', 'phylum', False)
 
 ```

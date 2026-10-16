@@ -17,7 +17,7 @@ tax = Taxonomy()
 This
 
 1. downloads the current NCBI taxdump (`taxdump.tar.gz`) and checks it
-   against its md5 checksum,
+   against the md5 checksum published by NCBI,
 2. downloads the GTDB metadata tables for Bacteria (`bac120_metadata`) and
    Archaea (`ar53_metadata`) of the **latest** GTDB release,
 3. assigns the negative taxids to the GTDB taxa and genomes and merges both
@@ -78,8 +78,11 @@ tax_r220 = Taxonomy(dbfile="/data/taxonomy/gtdb-r220/taxonomy.sqlite", gtdb_rele
 tax_r232 = Taxonomy(dbfile="/data/taxonomy/gtdb-r232/taxonomy.sqlite", gtdb_release=232)
 ```
 
-The taxid of a GTDB taxon is computed from its name, so a taxon has the same
-taxid in both databases as long as GTDB did not rename it.
+The taxid of a GTDB taxon is computed from its name, so a taxon usually has
+the same taxid in both databases if GTDB did not rename it. Rarely, the
+taxid changes nonetheless because of how hash collisions are resolved (see
+{doc}`background`). Translate names to taxids separately in each database
+rather than reusing taxids from the other one.
 
 ## Updating an existing database
 
@@ -121,6 +124,15 @@ tax = Taxonomy(dbfile="/data/taxonomy/gtdb-r232/taxonomy.sqlite",
 Whenever `taxdump_file` is given, the database is rebuilt from that archive.
 Pass it only once, to build the database, and open the database later with
 `Taxonomy(dbfile=...)` alone.
+:::
+
+:::{note}
+The archive contains only the taxonomy. The UniProt species mnemonics are
+still downloaded when the database is built. Without internet access this
+step fails: the error is logged and the database is built without
+mnemonics. Load them later from a local copy of `speclist.txt`, as
+described in the last section of this page. Alternatively, build the database on a
+machine with internet access and copy both database files.
 :::
 
 Archives made by older versions of omataxonomy can contain duplicated GTDB
