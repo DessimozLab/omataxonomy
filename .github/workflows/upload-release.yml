@@ -1,5 +1,6 @@
-# This workflow will upload a Python Package using Twine when a release is created
-# For more information see: https://help.github.com/en/actions/language-and-framework-guides/using-python-with-github-actions#publishing-to-package-registries
+# This workflow builds the package with uv and publishes it to PyPI when a v* tag is pushed.
+# It uses PyPI trusted publishing (OIDC), so no API token is needed. The trusted publisher
+# must be configured on PyPI for this repository and workflow file.
 
 # This workflow uses actions that are not certified by GitHub.
 # They are provided by a third-party and are governed by
@@ -17,6 +18,9 @@ jobs:
   deploy:
 
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
 
     steps:
     - uses: actions/checkout@v7
@@ -27,6 +31,4 @@ jobs:
     - name: Build package
       run: uv build
     - name: Publish to pypi
-      run: uv publish
-      env:
-        UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+      run: uv publish --trusted-publishing always
