@@ -8,22 +8,34 @@ DEFAULT_URL = "https://ftp.uniprot.org/pub/databases/uniprot/current_release/kno
 
 
 def iter_mnemonic_species_codes(url=None):
+    """Yield (code, taxid) pairs from UniProt's speclist.txt.
+
+    :param url: URL or path of a local copy of speclist.txt. Defaults to
+        the current UniProt release.
+    """
     if url is None:
         url = DEFAULT_URL
+    if os.path.isfile(url):
+        yield from _parse_speclist(url)
+        return
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpfile = Path(tmpdir) / "speclist.txt"
         urllib.request.urlretrieve(url, tmpfile)
-        end_header_seen = False
-        spec_re = re.compile(r"(?P<code>[A-Z][A-Z0-9]{2,4})\s+[EBA]\s+(?P<taxid>\d+):")
-        with open(tmpfile, "rt") as fh:
-            for line in fh:
-                if not end_header_seen:
-                    if line.startswith("_____ _ _______  ___"):
-                        end_header_seen = True
-                    continue
-                m = spec_re.match(line)
-                if m is not None:
-                    yield m.group('code'), m.group('taxid')
+        yield from _parse_speclist(tmpfile)
+
+
+def _parse_speclist(fname):
+    end_header_seen = False
+    spec_re = re.compile(r"(?P<code>[A-Z][A-Z0-9]{2,4})\s+[EBA]\s+(?P<taxid>\d+):")
+    with open(fname, "rt") as fh:
+        for line in fh:
+            if not end_header_seen:
+                if line.startswith("_____ _ _______  ___"):
+                    end_header_seen = True
+                continue
+            m = spec_re.match(line)
+            if m is not None:
+                yield m.group('code'), m.group('taxid')
 
 
 def iter_extra_mnemonic_species_codes(fname):

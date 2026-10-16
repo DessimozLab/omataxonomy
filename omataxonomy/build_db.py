@@ -124,6 +124,8 @@ def generate_table(t, input_folder):
 
 
 def update_db(dbfile, targz_file, remove_tarball=None, gtdb_release=None):
+    dbfile = os.path.abspath(dbfile)
+    targz_file = os.path.abspath(targz_file)
     os.makedirs(os.path.dirname(dbfile), exist_ok=True)
     os.makedirs(os.path.dirname(targz_file), exist_ok=True)
     if not os.path.exists(targz_file):
@@ -260,27 +262,31 @@ def update_mnemonic_codes(db, speclist=None, extra_file=None):
         db.rollback()
 
 
+def _md5_of_file(path):
+    with open(path, 'rb') as fh:
+        local_md5 = md5()
+        while chunk := fh.read(8192):
+            local_md5.update(chunk)
+    return local_md5.hexdigest()
+
+
 def download_ncbi_taxonomy():
-    md5_file = "taxdump.tar.gz.md5"
     res = requests.get("https://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz.md5")
     res.raise_for_status()
     md5_check = res.text.split()[0]
 
     targz_file = Path("taxdump.tar.gz")
-    if targz_file.exists():
-        with open(targz_file, 'rb') as fh:
-            local_md5 = md5()
-            while chunk := fh.read(8192):
-                local_md5.update(chunk)
-        if local_md5.hexdigest() != md5_check:
-            download_file("http://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz", targz_file)
-    else:
+    if not targz_file.exists() or _md5_of_file(targz_file) != md5_check:
         download_file("http://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz", targz_file)
+        if _md5_of_file(targz_file) != md5_check:
+            raise IOError("md5 checksum of downloaded NCBI taxdump.tar.gz does not match")
     return targz_file
 
 
 def build_combined_tarball(target, gtdb_release=None):
     from . import cwd
+    # the archive is written after changing into a temporary directory
+    target = os.path.abspath(target)
     with tempfile.TemporaryDirectory() as dwnfolder:
         with cwd(dwnfolder):
             ncbi_tar = download_ncbi_taxonomy()
