@@ -53,11 +53,14 @@ def load_tree_from_dump(tar):
     logger.info(f"{len(synonyms)} synonyms loaded.")
 
     logger.info("Loading nodes...")
+    duplicates = set()
     for line in tar.extractfile("nodes.dmp"):
         line = str(line.decode())
         fields = line.split("|")
         nodename = fields[0].strip()
         parentname = fields[1].strip()
+        if nodename in name2node:
+            duplicates.add(nodename)
         n = Tree()
         n.name = nodename
         # n.taxname = node2taxname[nodename]
@@ -70,6 +73,14 @@ def load_tree_from_dump(tar):
         parent2child[nodename] = parentname
         name2node[nodename] = n
     logger.info(f"{len(name2node)} nodes loaded.")
+    if duplicates:
+        # archives built before taxid hash collisions were resolved contain
+        # duplicated taxids. Loading them would silently drop taxa.
+        raise ValueError(
+            f"taxdump archive '{tar.name}' contains {len(duplicates)} duplicated taxids "
+            f"(e.g. {', '.join(sorted(duplicates)[:5])}). It was probably built by an "
+            f"older version of omataxonomy. Remove it to rebuild it from the latest "
+            f"NCBI and GTDB releases, or rebuild it with build_combined_tarball().")
 
     logger.info("Linking nodes...")
     for node in name2node:

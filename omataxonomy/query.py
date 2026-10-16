@@ -13,7 +13,7 @@ from .build_db import update_db, update_mnemonic_codes
 __all__ = ["Taxonomy", "is_taxadb_up_to_date"]
 
 
-DB_VERSION = 3
+DB_VERSION = 4
 DEFAULT_DB = os.path.expanduser(os.path.join('~', '.config', 'omataxonomy', 'taxonomy.sqlite'))
 DEFAULT_DUMP_NAME = "omatax.tar.gz"
 DEFAULT_RELEASE_ENV = "DARWIN_GENOMES_PATH"

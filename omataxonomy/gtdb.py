@@ -3,6 +3,7 @@ import csv
 import re
 import gzip
 import logging
+from collections import defaultdict
 from hashlib import md5
 
 logger = logging.getLogger(__name__)
@@ -20,8 +21,12 @@ def _load_meta(fn):
     return meta
 
 
-def build_tax_dump(meta_fn):
-    meta = _load_meta(meta_fn)
+def build_tax_dump(*meta_fns):
+    # all domains need to be converted together, as taxids are
+    # assigned jointly to resolve hash collisions deterministically
+    meta = {}
+    for fn in meta_fns:
+        meta.update(_load_meta(fn))
     with open("gtdbnodes.dmp", "at") as nodes_dump, open("gtdbnames.dmp", "at") as names_dump:
         write_dump_files(meta, nodes_dump, names_dump)
 
@@ -29,6 +34,41 @@ def build_tax_dump(meta_fn):
 def hash_to_int(val):
     h = md5(str(val).encode('utf-8'))
     return -abs(int(numpy.frombuffer(h.digest()[:4], dtype='i4')[0]))
+
+
+def assign_taxids(keys):
+    """Assign a unique negative 32bit taxid to every key.
+
+    The taxid of a key is :func:`hash_to_int` of the key itself. If several
+    keys hash to the same value, the alphabetically first one keeps it. All
+    other colliding keys are processed in alphabetical order and get the
+    first unused value of ``hash_to_int(f"{key}#{n}")`` for n = 1, 2, ...
+
+    The result depends only on the set of keys, i.e. it is deterministic for
+    a given GTDB release.
+
+    :param keys: iterable of keys (taxon names and genome accession numbers)
+    :returns: dict mapping each key to its taxid
+    """
+    by_hash = defaultdict(list)
+    for key in set(keys):
+        by_hash[hash_to_int(key)].append(key)
+    occupied = set(by_hash) | {0}
+    key2taxid = {}
+    colliding = []
+    for taxid, group in by_hash.items():
+        group.sort()
+        key2taxid[group[0]] = taxid
+        colliding.extend(group[1:])
+    for key in sorted(colliding):
+        n = 1
+        while (taxid := hash_to_int(f"{key}#{n}")) in occupied:
+            n += 1
+        occupied.add(taxid)
+        key2taxid[key] = taxid
+    if colliding:
+        logger.info(f"resolved {len(colliding)} taxid hash collisions")
+    return key2taxid
 
 
 def write_dump_files(meta, node_dump, names_dump):
@@ -61,23 +101,33 @@ def write_dump_files(meta, node_dump, names_dump):
         names_dump.write("\t|\t".join(map(str, buf)) + "\n")
 
     acc_re = re.compile(r"[RSGB]{2}_GC[AF]_(?P<acc>\d+)\.\d+")
-    lev2id = {}
+
+    def genome_key(genome_acc):
+        m = acc_re.match(genome_acc)
+        assert m is not None
+        return m.group('acc')
+
+    keys = set()
+    for genome_acc, genome_meta in meta.items():
+        keys.update(genome_meta['gtdb_taxonomy'].split(';'))
+        keys.add(genome_key(genome_acc))
+    key2taxid = assign_taxids(keys)
+
+    written = set()
     for genome_acc, genome_meta in meta.items():
         lineage = genome_meta['gtdb_taxonomy'].split(';')
         parent = 1
         for lev in lineage:
-            if not lev in lev2id:
-                taxid = hash_to_int(lev)
+            taxid = key2taxid[lev]
+            if lev not in written:
                 rank = PREFIX_2_RANK[lev[:3]]
                 write_node(taxid, parent, rank)
                 write_name(taxid, lev, "scientific name")
                 write_name(taxid, lev[3:], "common_name")
-                lev2id[lev] = taxid
-            parent = lev2id[lev]
+                written.add(lev)
+            parent = taxid
         # add the genome itself
-        m = acc_re.match(genome_acc)
-        assert m is not None
-        taxid = hash_to_int(m.group('acc'))
+        taxid = key2taxid[genome_key(genome_acc)]
         is_ref = genome_meta["gtdb_genome_representative"] == genome_acc
         write_node(taxid, parent, rank="subspecies", is_ref=is_ref)
         write_name(taxid, genome_acc, "scientific name")
@@ -106,9 +156,8 @@ def download_gtdb_release(rel=None, dom=None, target_folder=None):
     if target_folder is None:
         target_folder = "./"
     with cwd(target_folder):
-        for d in dom:
-            meta_fn = download_dom(d, rel)
-            build_tax_dump(meta_fn)
+        meta_fns = [download_dom(d, rel) for d in dom]
+        build_tax_dump(*meta_fns)
 
 
 def metadata_url(dom, rel):
